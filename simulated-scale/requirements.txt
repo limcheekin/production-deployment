@@ -1,0 +1,4 @@
+locust 
+fastapi 
+uvicorn 
+psutil
