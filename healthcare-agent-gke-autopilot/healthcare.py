@@ -187,6 +187,12 @@ async def main() -> None:
 
         status_inquiry = await agent.create_observation(
             "The patient asks to follow up on their visit, but it's not clear in which way",
+            composition_mode=p.CompositionMode.COMPOSITED,
+            canned_responses=[
+                await agent.create_canned_response(
+                    template="Do you want to schedule an appointment or check on lab results?",
+                )
+            ]
         )
 
         # Use this observation to disambiguate between the two journeys
