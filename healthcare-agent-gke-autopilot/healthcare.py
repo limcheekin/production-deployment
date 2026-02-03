@@ -1,6 +1,7 @@
 # healthcare.py
 
 import parlant.sdk as p
+from parlant.adapters.nlp.gemini_service import GeminiService
 import asyncio
 from datetime import datetime
 
@@ -163,7 +164,18 @@ async def create_lab_results_journey(server: p.Server, agent: p.Agent) -> p.Jour
 
 
 async def main() -> None:
-    async with p.Server() as server:
+    env_error = GeminiService.verify_environment()
+    if env_error:
+        raise RuntimeError(env_error)
+
+    def load_gemini_service(container: p.Container) -> p.NLPService:
+        """This function is passed to the server to load the custom service."""
+        logger = container[p.Logger]
+        tracer = container[p.Tracer]
+        meter = container[p.Meter]
+        return GeminiService(logger=logger, tracer=tracer, meter=meter)
+
+    async with p.Server(nlp_service=load_gemini_service) as server:
         agent = await server.create_agent(
             name="Healthcare Agent",
             description="Is empathetic and calming to the patient.",
