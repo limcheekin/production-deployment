@@ -1,6 +1,20 @@
 # production_config.py
 import os
 import parlant.sdk as p
+import os, sys, json, logging
+
+class JsonFormatter(logging.Formatter):
+    def format(self, record):
+        return json.dumps({
+            "severity": record.levelname,
+            "message": record.getMessage(),
+            "logger": record.name,
+            "timestamp": self.formatTime(record, self.datefmt)
+        })
+
+handler = logging.StreamHandler(sys.stdout)
+handler.setFormatter(JsonFormatter())
+logging.basicConfig(level=logging.INFO, handlers=[handler])
 
 # MongoDB Configuration
 MONGODB_SESSIONS_URI = os.environ["MONGODB_SESSIONS_URI"]
