@@ -1,0 +1,22 @@
+# Dockerfile - Optimized for GKE Autopilot
+FROM python:3.11-slim as builder
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --user --no-cache-dir -r requirements.txt
+
+FROM python:3.11-slim
+WORKDIR /app
+# Security: Create non-root user
+RUN groupadd -r parlant && useradd -r -g parlant parlant
+
+COPY --from=builder /root/.local /home/parlant/.local
+
+# Copy application code
+COPY *.py .
+
+ENV PATH=/home/parlant/.local/bin:$PATH
+# Security: Switch to non-root
+USER parlant 
+
+EXPOSE 8800
+CMD ["python", "main.py"]
