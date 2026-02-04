@@ -28,7 +28,15 @@ SERVER_HOST = os.environ.get("SERVER_HOST", "0.0.0.0")
 SERVER_PORT = int(os.environ.get("SERVER_PORT", "8800"))
 
 # Choose your NLP service
-NLP_SERVICE = p.NLPServices.gemini
+if os.environ.get("USE_VERTEX_AI") == "true":
+    # set the following environment variables
+    # - VERTEX_AI_PROJECT_ID
+    # - VERTEX_AI_REGION, default to "us-central1"
+    # - VERTEX_AI_MODEL, default to "claude-sonnet-3.5"
+    NLP_SERVICE = p.NLPServices.vertex
+else:
+    # set GEMINI_API_KEY
+    NLP_SERVICE = p.NLPServices.gemini
 
 def get_mongodb_config():
     """Returns MongoDB configuration for Parlant."""
