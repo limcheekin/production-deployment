@@ -1,10 +1,24 @@
-# healthcare.py
-
 import parlant.sdk as p
-from parlant.adapters.nlp.gemini_service import GeminiService
 import asyncio
 from datetime import datetime
+from production_config import (
+    get_mongodb_config,
+    NLP_SERVICE,
+    SERVER_HOST,
+    SERVER_PORT
+)
+from auth import ProductionAuthPolicy
+import os
 
+async def configure_container(container: p.Container) -> p.Container:
+    """Configure production-specific dependencies."""
+
+    # Set up production authorization
+    container[p.AuthorizationPolicy] = ProductionAuthPolicy(
+        secret_key=os.environ["JWT_SECRET_KEY"],
+    )
+
+    return container
 
 @p.tool
 async def get_insurance_providers(context: p.ToolContext) -> p.ToolResult:
@@ -163,56 +177,78 @@ async def create_lab_results_journey(server: p.Server, agent: p.Agent) -> p.Jour
     return journey
 
 
+async def setup_agent_behavior(server: p.Server, agent: p.Agent) -> None:
+    await add_domain_glossary(agent)
+    scheduling_journey = await create_scheduling_journey(server, agent)
+    lab_results_journey = await create_lab_results_journey(server, agent)
+
+    status_inquiry = await agent.create_observation(
+        "The patient asks to follow up on their visit, but it's not clear in which way",
+        composition_mode=p.CompositionMode.COMPOSITED,
+        canned_responses=[
+            await agent.create_canned_response(
+                template="Do you want to schedule an appointment or check on lab results?",
+            )
+        ]
+    )
+
+    # Use this observation to disambiguate between the two journeys
+    await status_inquiry.disambiguate([scheduling_journey, lab_results_journey])
+
+    await agent.create_guideline(
+        condition="The patient asks about insurance",
+        action="List the insurance providers we accept, and tell them to call the office for more details",
+        tools=[get_insurance_providers],
+    )
+
+    await agent.create_guideline(
+        condition="The patient asks to talk to a human agent",
+        action="Ask them to call the office, providing the phone number",
+    )
+
+    await agent.create_guideline(
+        condition="The patient inquires about something that has nothing to do with our healthcare",
+        action="Kindly tell them you cannot assist with off-topic inquiries - do not engage with their request.",
+    )
+
+
 async def main() -> None:
-    env_error = GeminiService.verify_environment()
-    if env_error:
-        raise RuntimeError(env_error)
+    try:
+        print("DEBUG: Starting main()")
+        # MongoDB configuration
+        mongodb_config = get_mongodb_config()
+        print(f"DEBUG: MongoDB config retrieved")
+        
+        async with p.Server(
+            host=SERVER_HOST,
+            port=SERVER_PORT,
+            nlp_service=NLP_SERVICE,
+            configure_container=configure_container,
+            **mongodb_config
+        ) as server:
+            print("DEBUG: Server context entered")
+            # Create or retrieve your agent
+            agents = await server.list_agents()
+            print(f"DEBUG: Found {len(agents)} existing agents")
 
-    def load_gemini_service(container: p.Container) -> p.NLPService:
-        """This function is passed to the server to load the custom service."""
-        logger = container[p.Logger]
-        tracer = container[p.Tracer]
-        meter = container[p.Meter]
-        return GeminiService(logger=logger, tracer=tracer, meter=meter)
-
-    async with p.Server(nlp_service=load_gemini_service) as server:
-        agent = await server.create_agent(
-            name="Healthcare Agent",
-            description="Is empathetic and calming to the patient.",
-        )
-
-        await add_domain_glossary(agent)
-        scheduling_journey = await create_scheduling_journey(server, agent)
-        lab_results_journey = await create_lab_results_journey(server, agent)
-
-        status_inquiry = await agent.create_observation(
-            "The patient asks to follow up on their visit, but it's not clear in which way",
-            composition_mode=p.CompositionMode.COMPOSITED,
-            canned_responses=[
-                await agent.create_canned_response(
-                    template="Do you want to schedule an appointment or check on lab results?",
+            if not agents:
+                print("DEBUG: Creating new agent")
+                agent = await server.create_agent(
+                    name="Healthcare Agent",
+                    description="Is empathetic and calming to the patient.",
                 )
-            ]
-        )
 
-        # Use this observation to disambiguate between the two journeys
-        await status_inquiry.disambiguate([scheduling_journey, lab_results_journey])
-
-        await agent.create_guideline(
-            condition="The patient asks about insurance",
-            action="List the insurance providers we accept, and tell them to call the office for more details",
-            tools=[get_insurance_providers],
-        )
-
-        await agent.create_guideline(
-            condition="The patient asks to talk to a human agent",
-            action="Ask them to call the office, providing the phone number",
-        )
-
-        await agent.create_guideline(
-            condition="The patient inquires about something that has nothing to do with our healthcare",
-            action="Kindly tell them you cannot assist with off-topic inquiries - do not engage with their request.",
-        )
+                # Set up your guidelines, journeys, etc.
+                print("DEBUG: Setting up agent behavior")
+                await setup_agent_behavior(server, agent)
+            else:
+                print("DEBUG: Using existing agent")
+                
+    except Exception as e:
+        print(f"ERROR: Exception in main(): {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
 
 
 if __name__ == "__main__":
