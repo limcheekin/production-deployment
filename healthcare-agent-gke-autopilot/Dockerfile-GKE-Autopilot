@@ -6,17 +6,25 @@ RUN pip install --user --no-cache-dir -r requirements.txt
 
 FROM python:3.11-slim
 WORKDIR /app
-# Security: Create non-root user
-RUN groupadd -r parlant && useradd -r -g parlant parlant
 
+# Security: Create non-root user with home directory
+RUN groupadd -r parlant && useradd -r -g parlant -m -d /home/parlant parlant
+
+# Copy Python packages from builder
 COPY --from=builder /root/.local /home/parlant/.local
 
 # Copy application code
 COPY *.py .
 
+# Create data directory that the app needs and set ownership
+RUN mkdir -p /app/parlant-data && \
+    chown -R parlant:parlant /app && \
+    chown -R parlant:parlant /home/parlant
+
 ENV PATH=/home/parlant/.local/bin:$PATH
+
 # Security: Switch to non-root
-USER parlant 
+USER parlant
 
 EXPOSE 8800
 CMD ["python", "main.py"]
