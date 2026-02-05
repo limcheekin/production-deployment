@@ -1,0 +1,70 @@
+#!/bin/bash
+
+# Define variables
+REGION="us-central1"
+PROJECT_ID=$(gcloud config get-value project)
+SERVICE_ACCOUNT="parlant-sa@${PROJECT_ID}.iam.gserviceaccount.com"
+
+echo "--- Starting Cleanup for Project: $PROJECT_ID ---"
+
+# 1. Delete Ingress & Service (Triggers Load Balancer Deletion)
+echo "[1/7] Deleting Kubernetes Ingress & Service..."
+echo "      (This triggers Google Cloud Load Balancer deletion)"
+kubectl delete ingress parlant-ingress --ignore-not-found=true
+kubectl delete service parlant-service --ignore-not-found=true
+
+# Wait for LB to release IP locks (Increased to 60s for safety)
+echo "      Waiting 60 seconds for LB de-provisioning..."
+sleep 60
+
+# 2. Delete GKE Cluster
+echo "[2/7] Deleting GKE Autopilot Cluster (parlant-cluster)..."
+gcloud container clusters delete parlant-cluster --region $REGION --quiet
+
+# 3. Clean up Networking
+echo "[3/7] Cleaning up Networking Resources..."
+
+echo "      - Releasing Static IP..."
+gcloud compute addresses delete parlant-global-ip --global --quiet
+
+echo "      - Deleting Cloud NAT & Router..."
+gcloud compute routers nats delete parlant-nat --router=parlant-router --region=$REGION --quiet
+gcloud compute routers delete parlant-router --region=$REGION --quiet
+
+# 4. Clean up Firewall Rules (Critical for VPC Deletion)
+echo "[4/7] Cleaning up Residual Firewall Rules..."
+# GKE and Ingress often leave rules behind that block VPC deletion. 
+# We delete any rule associated with the 'parlant-vpc' network.
+FIREWALL_RULES=$(gcloud compute firewall-rules list --filter="network:parlant-vpc" --format="value(name)")
+if [ -n "$FIREWALL_RULES" ]; then
+    echo "      Deleting rules: $FIREWALL_RULES"
+    gcloud compute firewall-rules delete $FIREWALL_RULES --quiet
+else
+    echo "      No residual firewall rules found."
+fi
+
+echo "      - Deleting VPC & Subnet..."
+gcloud compute networks subnets delete parlant-subnet --region=$REGION --quiet
+gcloud compute networks delete parlant-vpc --quiet
+
+# 5. Clean up IAM & Security
+echo "[5/7] Cleaning up IAM & Security..."
+
+echo "      - Removing IAM Policy Binding (Project Level)..."
+# Remove the project-level role granted to the service account
+gcloud projects remove-iam-policy-binding $PROJECT_ID \
+    --member "serviceAccount:$SERVICE_ACCOUNT" \
+    --role "roles/aiplatform.user" --quiet 2>/dev/null || echo "      Binding already removed or not found."
+
+echo "      - Deleting Service Account..."
+gcloud iam service-accounts delete $SERVICE_ACCOUNT --quiet
+
+echo "      - Deleting Cloud Armor Policy..."
+gcloud compute security-policies delete parlant-security-policy --quiet
+
+# 6. Clean up Artifacts
+echo "[6/7] Deleting Artifact Registry Repository..."
+gcloud artifacts repositories delete parlant-repo --location=$REGION --quiet
+
+echo "--- Cleanup Complete! ---"
+echo "IMPORTANT: Don't forget to terminate your MongoDB Atlas cluster manually via their dashboard."
