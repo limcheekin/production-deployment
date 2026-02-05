@@ -4,14 +4,34 @@
 REGION="us-central1"
 PROJECT_ID=$(gcloud config get-value project)
 SERVICE_ACCOUNT="parlant-sa@${PROJECT_ID}.iam.gserviceaccount.com"
+KSA_NAME="parlant-ksa"
+NAMESPACE="default"
 
 echo "--- Starting Cleanup for Project: $PROJECT_ID ---"
 
-# 1. Delete Ingress & Service (Triggers Load Balancer Deletion)
-echo "[1/7] Deleting Kubernetes Ingress & Service..."
-echo "      (This triggers Google Cloud Load Balancer deletion)"
+# 1. Delete Kubernetes Resources (Before Cluster Deletion)
+echo "[1/7] Deleting Kubernetes Resources..."
+
+echo "      - Deleting Ingress (Triggers Load Balancer Deletion)..."
 kubectl delete ingress parlant-ingress --ignore-not-found=true
+
+echo "      - Deleting ManagedCertificate..."
+kubectl delete managedcertificate parlant-cert --ignore-not-found=true
+
+echo "      - Deleting Service..."
 kubectl delete service parlant-service --ignore-not-found=true
+
+echo "      - Deleting Deployment..."
+kubectl delete deployment parlant --ignore-not-found=true
+
+echo "      - Deleting BackendConfig..."
+kubectl delete backendconfig parlant-backend-config --ignore-not-found=true
+
+echo "      - Deleting Secret..."
+kubectl delete secret parlant-secrets --ignore-not-found=true
+
+echo "      - Deleting Kubernetes Service Account..."
+kubectl delete serviceaccount $KSA_NAME --ignore-not-found=true
 
 # Wait for LB to release IP locks (Increased to 60s for safety)
 echo "      Waiting 60 seconds for LB de-provisioning..."
@@ -50,6 +70,11 @@ gcloud compute networks delete parlant-vpc --quiet
 # 5. Clean up IAM & Security
 echo "[5/7] Cleaning up IAM & Security..."
 
+echo "      - Removing Workload Identity Binding..."
+gcloud iam service-accounts remove-iam-policy-binding $SERVICE_ACCOUNT \
+    --role roles/iam.workloadIdentityUser \
+    --member "serviceAccount:${PROJECT_ID}.svc.id.goog[${NAMESPACE}/${KSA_NAME}]" --quiet 2>/dev/null || echo "      Binding already removed or not found."
+
 echo "      - Removing IAM Policy Binding (Project Level)..."
 # Remove the project-level role granted to the service account
 gcloud projects remove-iam-policy-binding $PROJECT_ID \
@@ -65,6 +90,11 @@ gcloud compute security-policies delete parlant-security-policy --quiet
 # 6. Clean up Artifacts
 echo "[6/7] Deleting Artifact Registry Repository..."
 gcloud artifacts repositories delete parlant-repo --location=$REGION --quiet
+
+# 7. Clean up Local Files
+echo "[7/7] Cleaning up Local Generated Files..."
+rm -f k8s-manifests.yaml ingress.yaml
+echo "      Removed k8s-manifests.yaml and ingress.yaml"
 
 echo "--- Cleanup Complete! ---"
 echo "IMPORTANT: Don't forget to terminate your MongoDB Atlas cluster manually via their dashboard."
