@@ -36,8 +36,9 @@ jobs:
         IMAGE_NAME: parlant-agent
         IMAGE_TAG: ${{ github.sha }}
       run: |
+        cd healthcare-agent-gke-autopilot
         IMAGE_PATH="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/${IMAGE_NAME}"
-        docker build -f healthcare-agent-gke-autopilot/Dockerfile-GKE-Autopilot -t ${IMAGE_PATH}:${IMAGE_TAG} .
+        docker build -f Dockerfile-GKE-Autopilot -t ${IMAGE_PATH}:${IMAGE_TAG} .
         docker push ${IMAGE_PATH}:${IMAGE_TAG}
         docker tag ${IMAGE_PATH}:${IMAGE_TAG} ${IMAGE_PATH}:latest
         docker push ${IMAGE_PATH}:latest
