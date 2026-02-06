@@ -7,6 +7,11 @@ RUN pip install --user --no-cache-dir -r requirements.txt
 FROM python:3.11-slim
 WORKDIR /app
 
+# Install CA certificates for SSL/TLS connections (required for MongoDB Atlas)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
 # Security: Create non-root user with home directory
 RUN groupadd -r parlant && useradd -r -g parlant -m -d /home/parlant parlant
 
