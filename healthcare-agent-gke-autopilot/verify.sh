@@ -467,8 +467,8 @@ section_header "Endpoint Connectivity Test"
 if [[ -n "$IP_ADDRESS" ]]; then
     echo "    Testing HTTP connectivity to $IP_ADDRESS..."
     
-    # Test /health endpoint
-    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 "http://$IP_ADDRESS/health" 2>/dev/null || echo "000")
+    # Test /healthz endpoint
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 "http://$IP_ADDRESS/healthz" 2>/dev/null || echo "000")
     
     if [[ "$HTTP_CODE" == "200" ]]; then
         check_pass "Health endpoint returned HTTP 200"
