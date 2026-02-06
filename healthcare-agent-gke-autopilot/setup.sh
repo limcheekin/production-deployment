@@ -39,6 +39,17 @@ else
 fi
 
 # ==============================================================================
+# Pre-flight Check: Vertex AI API
+# ==============================================================================
+echo "[Pre-flight] Checking Vertex AI API..."
+if gcloud services list --enabled --project="$PROJECT_ID" --filter="name:aiplatform.googleapis.com" | grep -q "aiplatform.googleapis.com"; then
+    echo "    - Vertex AI API is already enabled."
+else
+    echo "    - Enabling Vertex AI API..."
+    gcloud services enable aiplatform.googleapis.com --project="$PROJECT_ID" --quiet
+fi
+
+# ==============================================================================
 # Step 2: Infrastructure (GKE Autopilot)
 # ==============================================================================
 echo "[Step 2] Setting up Infrastructure..."
