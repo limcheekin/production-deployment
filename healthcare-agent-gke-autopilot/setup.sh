@@ -125,6 +125,8 @@ echo "[Step 4] Configuring Secure Deployment..."
 echo "    - Configuring Workload Identity..."
 if ! gcloud iam service-accounts describe $GSA_EMAIL &>/dev/null; then
     gcloud iam service-accounts create $GSA_NAME --display-name "Parlant Agent Service Account" --quiet
+    echo "    - Waiting for service account to propagate..."
+    sleep 10
 fi
 
 # Grant Vertex AI User Role
