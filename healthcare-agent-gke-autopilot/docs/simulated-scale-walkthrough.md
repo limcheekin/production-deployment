@@ -82,8 +82,16 @@ cd healthcare-agent-gke-autopilot
 
 ## Key Design Decisions
 
-1. **Mock at Application Level**: Instead of URL redirection (not possible with Vertex AI Workload Identity), the mock is Gemini API compatible.
+1. **Full API Redirection**: 
+   - Used `GOOGLE_GEMINI_BASE_URL` to redirect **ALL** Parlant SDK calls (generation & embeddings) to the mock server.
+   - The `google.genai` SDK respects this env var, allowing full isolation without code changes to Parlant.
 
-2. **HPA Limited to 3 Pods**: MongoDB Free Tier has 500 connection limit; 3 pods × 50 connections = 150 (with headroom).
+2. **Mock Embeddings Strategy**: 
+   - Implemented `batchEmbedContents` and `embedContent` endpoints returning **unit vectors** (first dimension = 1.0).
+   - *Critical Learning*: Returning all-zero vectors caused `RuntimeWarning: invalid value encountered in divide` in Parlant's normalization logic.
 
-3. **NAT Tuning Always Applied**: Without VPC peering (M0 doesn't support it), all traffic uses NAT, requiring higher port allocation.
+3. **Robust Deployment Script**:
+   - Added timestamp-based image tagging (`mock-llm:YYYYMMDD-HHMMSS`) to prevent K8s caching stale logic.
+   - Implemented force rollout restarts and pod cleanup to ensure clean state transitions.
+
+4. **HPA Limited to 3 Pods**: MongoDB Free Tier has 500 connection limit; 3 pods × 50 connections = 150 (Safe).

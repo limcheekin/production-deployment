@@ -37,6 +37,7 @@ spec:
         # docker build -t us-central1-docker.pkg.dev/$PROJECT_ID/parlant-repo/mock-llm:latest -f load_testing/Dockerfile load_testing/
         # docker push us-central1-docker.pkg.dev/$PROJECT_ID/parlant-repo/mock-llm:latest
         image: us-central1-docker.pkg.dev/PROJECT_ID/parlant-repo/mock-llm:latest
+        imagePullPolicy: Always  # Always pull to get latest code changes
         ports:
         - containerPort: 8000
         env:

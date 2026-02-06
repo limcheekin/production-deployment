@@ -122,11 +122,11 @@ Add load testing configuration:
 ```diff
 +# Load Testing Configuration (set USE_VERTEX_AI=false for testing)
 +# GEMINI_API_KEY=mock-key-any-string
-+# Point GOOGLE_GENAI_HOST to mock service for simulated scale testing
++# Point GOOGLE_GEMINI_BASE_URL to mock service for simulated scale testing
 ```
 
 > [!NOTE]
-> During load testing, set `USE_VERTEX_AI=false` and `GEMINI_API_KEY=mock-key`. The Gemini client can be redirected using `GOOGLE_GENAI_HOST` environment variable.
+> During load testing, set `USE_VERTEX_AI=false` and `GEMINI_API_KEY=mock-key`. The Gemini client can be redirected using `GOOGLE_GEMINI_BASE_URL` environment variable.
 
 ---
 

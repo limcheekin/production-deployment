@@ -144,6 +144,57 @@ async def generate_content(model: str, request: GeminiRequest):
     }
 
 
+@app.post("/v1beta/models/{model}:batchEmbedContents")
+async def batch_embed_contents(model: str, request: Request):
+    """
+    Mock batch embeddings endpoint for Gemini embedding API.
+    
+    Returns dummy 768-dimensional embeddings for each content item.
+    The Parlant SDK uses this for entity embedding caching on startup.
+    
+    Note: Returns a distinct dense vector to avoid NaN errors (normalization)
+    and vector DB indexing errors (duplicates).
+    """
+    try:
+        body = await request.json()
+        requests_list = body.get("requests", [])
+        
+        # Generate mock embeddings (768 dimensions)
+        # Use a dense vector with variation to ensure safe normalization AND distinctness
+        embeddings = []
+        for i, _ in enumerate(requests_list):
+            vec = [0.1] * 768
+            # Add variation to ensure vectors are distinct
+            # (Identical vectors can crash some vector DB indexers)
+            vec[i % 768] = 0.9 
+            embeddings.append({"values": vec})
+        
+        return {
+            "embeddings": embeddings
+        }
+    except Exception:
+        # Return at least one dense vector embedding if request parsing fails
+        vec = [0.1] * 768
+        vec[0] = 0.9
+        return {
+            "embeddings": [{"values": vec}]
+        }
+
+
+@app.post("/v1beta/models/{model}:embedContent")
+async def embed_content(model: str, request: Request):
+    """
+    Mock single embedding endpoint for Gemini embedding API.
+    """
+    vec = [0.1] * 768  # Dense vector
+    vec[0] = 0.9       # Variation
+    return {
+        "embedding": {
+            "values": vec
+        }
+    }
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint for Kubernetes probes."""
