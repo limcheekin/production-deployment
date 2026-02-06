@@ -63,6 +63,10 @@ jobs:
         docker tag ${IMAGE_PATH}:${IMAGE_TAG} ${IMAGE_PATH}:latest
         docker push ${IMAGE_PATH}:latest
 
+    - name: Install GKE Auth Plugin
+      run: |
+        gcloud components install gke-gcloud-auth-plugin --quiet
+
     - name: Update kubeconfig
       env:
         PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
