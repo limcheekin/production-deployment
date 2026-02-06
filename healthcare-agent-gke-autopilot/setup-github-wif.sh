@@ -106,11 +106,11 @@ fi
 # ==============================================================================
 echo "[Step 5] Granting IAM roles..."
 
-# Artifact Registry Writer - to push Docker images
-echo "    - Granting Artifact Registry Writer..."
+# Artifact Registry Admin - to create repositories and push Docker images
+echo "    - Granting Artifact Registry Admin..."
 gcloud projects add-iam-policy-binding $PROJECT_ID \
     --member="serviceAccount:${SA_EMAIL}" \
-    --role="roles/artifactregistry.writer" \
+    --role="roles/artifactregistry.admin" \
     --quiet > /dev/null
 
 # Container Developer - to manage GKE deployments
