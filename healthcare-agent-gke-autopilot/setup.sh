@@ -68,6 +68,18 @@ else
         --nat-all-subnet-ip-ranges --quiet
 fi
 
+# 2b. Configure NAT for High Concurrency (Simulated Scale)
+# Without VPC peering (M0 Free Tier), all MongoDB traffic uses NAT, doubling port consumption.
+echo "    - Tuning Cloud NAT for high concurrency..."
+gcloud compute routers nats update $NAT_NAME \
+    --router=$ROUTER_NAME \
+    --region=$REGION \
+    --min-ports-per-vm=4096 \
+    --enable-dynamic-port-allocation \
+    --max-ports-per-vm=65536 \
+    --tcp-established-idle-timeout=300s \
+    --tcp-transitory-idle-timeout=30s --quiet
+
 # 3. Create GKE Autopilot Cluster
 if gcloud container clusters describe $CLUSTER_NAME --region=$REGION &>/dev/null; then
     echo "    - Cluster $CLUSTER_NAME already exists, checking status..."

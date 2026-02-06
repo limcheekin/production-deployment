@@ -1,0 +1,70 @@
+# Mock LLM Service Deployment
+# Kubernetes manifests for simulated scale testing
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-llm
+  labels:
+    app: mock-llm
+spec:
+  selector:
+    app: mock-llm
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-llm
+  labels:
+    app: mock-llm
+spec:
+  replicas: 2  # Sufficient for 50 CCU (Free Tier limit)
+  selector:
+    matchLabels:
+      app: mock-llm
+  template:
+    metadata:
+      labels:
+        app: mock-llm
+    spec:
+      containers:
+      - name: mock-llm
+        # Build and push this image before deploying:
+        # docker build -t us-central1-docker.pkg.dev/$PROJECT_ID/parlant-repo/mock-llm:latest -f load_testing/Dockerfile load_testing/
+        # docker push us-central1-docker.pkg.dev/$PROJECT_ID/parlant-repo/mock-llm:latest
+        image: us-central1-docker.pkg.dev/PROJECT_ID/parlant-repo/mock-llm:latest
+        ports:
+        - containerPort: 8000
+        env:
+        # Configurable latency settings
+        - name: MOCK_MIN_LATENCY
+          value: "0.5"
+        - name: MOCK_MAX_LATENCY
+          value: "2.0"
+        - name: MOCK_TOKEN_DELAY
+          value: "0.05"
+        - name: MOCK_TOKEN_COUNT
+          value: "20"
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 30

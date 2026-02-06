@@ -1,0 +1,134 @@
+# Locust Deployment for Distributed Load Testing
+# Deploy to Kubernetes for running scale tests
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: locust-script
+data:
+  locust_load_test.py: |
+    # This will be replaced by the actual script during deployment
+    # Use: kubectl create configmap locust-script --from-file=locust_load_test.py -o yaml --dry-run=client | kubectl apply -f -
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: locust-master
+  labels:
+    app: locust
+    role: master
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 8089
+      targetPort: 8089
+      name: web
+    - port: 5557
+      targetPort: 5557
+      name: master
+  selector:
+    app: locust
+    role: master
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: locust-master
+  labels:
+    app: locust
+    role: master
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: locust
+      role: master
+  template:
+    metadata:
+      labels:
+        app: locust
+        role: master
+    spec:
+      containers:
+      - name: locust
+        image: locustio/locust:2.20.0
+        ports:
+        - containerPort: 8089
+        - containerPort: 5557
+        env:
+        - name: PARLANT_AGENT_ID
+          value: ""  # Auto-discover
+        - name: POLL_TIMEOUT
+          value: "60"
+        - name: POLL_WAIT_FOR_DATA
+          value: "10"
+        args:
+          - "--master"
+          - "-f"
+          - "/locust/locust_load_test.py"
+          - "--host"
+          - "http://parlant-service:8800"  # Internal service URL
+        volumeMounts:
+        - name: locust-script
+          mountPath: /locust
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+      volumes:
+      - name: locust-script
+        configMap:
+          name: locust-script
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: locust-worker
+  labels:
+    app: locust
+    role: worker
+spec:
+  replicas: 2  # Scale up for higher CCU
+  selector:
+    matchLabels:
+      app: locust
+      role: worker
+  template:
+    metadata:
+      labels:
+        app: locust
+        role: worker
+    spec:
+      containers:
+      - name: locust
+        image: locustio/locust:2.20.0
+        env:
+        - name: PARLANT_AGENT_ID
+          value: ""
+        - name: POLL_TIMEOUT
+          value: "60"
+        - name: POLL_WAIT_FOR_DATA
+          value: "10"
+        args:
+          - "--worker"
+          - "--master-host"
+          - "locust-master"
+          - "-f"
+          - "/locust/locust_load_test.py"
+        volumeMounts:
+        - name: locust-script
+          mountPath: /locust
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+      volumes:
+      - name: locust-script
+        configMap:
+          name: locust-script
