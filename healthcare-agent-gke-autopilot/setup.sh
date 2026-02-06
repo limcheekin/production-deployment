@@ -194,7 +194,7 @@ spec:
     checkIntervalSec: 10
     timeoutSec: 5
     type: HTTP
-    requestPath: /health
+    requestPath: /healthz
     port: 8800
 ---
 # Service
@@ -279,7 +279,7 @@ spec:
             memory: "2Gi"
         livenessProbe:
           httpGet:
-            path: /health
+            path: /healthz
             port: 8800
           initialDelaySeconds: 30
           periodSeconds: 10
@@ -287,7 +287,7 @@ spec:
           failureThreshold: 3            
         readinessProbe:
           httpGet:
-            path: /health
+            path: /healthz
             port: 8800
           initialDelaySeconds: 10
 ---
