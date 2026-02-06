@@ -107,6 +107,18 @@ fi
 echo "    - Fetching cluster credentials..."
 gcloud container clusters get-credentials $CLUSTER_NAME --region=$REGION --quiet
 
+# Ensure HttpLoadBalancing addon is enabled (Critical for Ingress Controller)
+echo "    - Ensuring HttpLoadBalancing addon is enabled..."
+HTTP_LB_STATUS=$(gcloud container clusters describe $CLUSTER_NAME --region=$REGION --format="value(addonsConfig.httpLoadBalancing.disabled)" 2>/dev/null)
+if [[ "$HTTP_LB_STATUS" == "True" ]]; then
+    echo "      HttpLoadBalancing is disabled, enabling it now..."
+    gcloud container clusters update $CLUSTER_NAME --region=$REGION --update-addons=HttpLoadBalancing=ENABLED --quiet
+    echo "      Waiting for addon to initialize..."
+    sleep 30
+else
+    echo "      HttpLoadBalancing addon is enabled."
+fi
+
 # ==============================================================================
 # Step 3: Security Layer (Cloud Armor)
 # ==============================================================================
@@ -335,11 +347,11 @@ kind: Ingress
 metadata:
   name: parlant-ingress
   annotations:
+    kubernetes.io/ingress.class: "gce"
     kubernetes.io/ingress.global-static-ip-name: "parlant-global-ip"
     networking.gke.io/managed-certificates: "parlant-cert"
     kubernetes.io/ingress.allow-http: "false"
 spec:
-  ingressClassName: "gce"
   rules:
   - host: $DOMAIN_NAME
     http:
@@ -361,9 +373,9 @@ kind: Ingress
 metadata:
   name: parlant-ingress
   annotations:
+    kubernetes.io/ingress.class: "gce"
     kubernetes.io/ingress.global-static-ip-name: "parlant-global-ip"
 spec:
-  ingressClassName: "gce"
   defaultBackend:
     service:
       name: parlant-service
