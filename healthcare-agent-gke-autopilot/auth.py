@@ -7,4 +7,9 @@ class ProductionAuthPolicy(p.ProductionAuthorizationPolicy):
     def __init__(self, secret_key: str):
         super().__init__()
         self.secret_key = secret_key
-        # Add your custom authorization logic here
+
+    # bypass auth for testing   
+    async def authorize(self, request: p.Request, operation: str) -> None:
+        if operation == "access_integrated_ui":
+            return
+        await super().authorize(request, operation)
