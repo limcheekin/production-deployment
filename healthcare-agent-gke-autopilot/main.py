@@ -244,12 +244,13 @@ async def main() -> None:
             else:
                 print("DEBUG: Using existing agent")
             
-            # Keep the server running
-            print("DEBUG: Server is running, waiting for termination...")
-            await asyncio.Event().wait()
-            
     except Exception as e:
         print(f"ERROR: Exception in main(): {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
+    except BaseException as e:
+        print(f"CRITICAL: BaseException in main(): {type(e).__name__}: {e}")
         import traceback
         traceback.print_exc()
         raise
