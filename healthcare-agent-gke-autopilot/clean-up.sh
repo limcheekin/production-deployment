@@ -51,6 +51,47 @@ echo "      - Deleting Cloud NAT & Router..."
 gcloud compute routers nats delete parlant-nat --router=parlant-router --region=$REGION --quiet
 gcloud compute routers delete parlant-router --region=$REGION --quiet
 
+# 3a. Clean up Forwarding Rules (Release IP usage)
+echo "      - Checking for orphaned Forwarding Rules (Global)..."
+IP_ADDRESS=$(gcloud compute addresses describe parlant-global-ip --global --format="value(address)" 2>/dev/null)
+if [ -n "$IP_ADDRESS" ]; then
+    # Find Forwarding Rules using this IP
+    FW_RULES=$(gcloud compute forwarding-rules list --filter="IPAddress:$IP_ADDRESS" --format="value(name)" --global 2>/dev/null)
+    for RULE in $FW_RULES; do
+        echo "      [Cleanup] Deleting Forwarding Rule: $RULE"
+        gcloud compute forwarding-rules delete "$RULE" --global --quiet
+    done
+fi
+
+# 3b. Clean up Network Endpoint Groups (NEGs) - Critical for Subnet Deletion
+echo "      - Checking for orphaned Network Endpoint Groups (NEGs)..."
+# List NEGs in the VPC (Name and Zone)
+gcloud compute network-endpoint-groups list --filter="network:parlant-vpc" --format="value[separator=','](name,zone)" 2>/dev/null | while IFS=, read -r NAME ZONE; do
+    if [ -n "$NAME" ]; then
+        echo "      [Cleanup] Deleting NEG: $NAME in $ZONE..."
+        # Attempt to delete. This might fail if attached to a Backend Service.
+        if ! gcloud compute network-endpoint-groups delete "$NAME" --zone="$ZONE" --quiet 2>/dev/null; then
+            echo "      [WARN] Could not delete NEG '$NAME'. It might be in use by a Backend Service."
+            echo "      [Attempt] Scanning for Backend Services associated with parlant-vpc..."
+            
+            # Aggressive Strategy: Find Backend Services that use this NEG
+            # This is complex to query directly. We will list all BS and grep for the NEG name as a heuristic.
+            MATCHING_BS=$(gcloud compute backend-services list --format="value(name)" --filter="backends.group:$NAME" --global 2>/dev/null)
+            
+            if [ -n "$MATCHING_BS" ]; then
+                echo "      [Cleanup] Found Backend Service using NEG: $MATCHING_BS"
+                gcloud compute backend-services delete $MATCHING_BS --global --quiet
+                
+                # Retry NEG deletion
+                echo "      [Retry] Deleting NEG: $NAME..."
+                gcloud compute network-endpoint-groups delete "$NAME" --zone="$ZONE" --quiet
+            else
+                echo "      [ERROR] Could not find Backend Service for NEG $NAME. Please check manually."
+            fi
+        fi
+    fi
+done
+
 # 4. Clean up Firewall Rules (Critical for VPC Deletion)
 echo "[4/7] Cleaning up Residual Firewall Rules..."
 # GKE and Ingress often leave rules behind that block VPC deletion. 
