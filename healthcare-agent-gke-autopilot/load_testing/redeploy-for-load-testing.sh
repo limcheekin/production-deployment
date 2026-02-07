@@ -385,7 +385,7 @@ spec:
           httpGet:
             path: /healthz
             port: 8800
-          initialDelaySeconds: 120
+          initialDelaySeconds: 10
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 3            
@@ -397,6 +397,12 @@ spec:
           periodSeconds: 10
           timeoutSeconds: 1
           failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /healthz
+            port: 8800
+          failureThreshold: 30
+          periodSeconds: 10
 EOF
 
     echo_info "Waiting for Parlant rollout (timeout: 600s)..."
