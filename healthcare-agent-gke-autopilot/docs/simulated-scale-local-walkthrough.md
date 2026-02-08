@@ -50,9 +50,14 @@ This script will:
   - Baseline test (2 users, 1 minute) completed successfully with **0 failures**.
   - Average response time for `Full_Turn_Quick_Chat` was ~370ms.
   - Dynamic schema generation in `mock_llm_server.py` correctly handles diverse schemas from Parlant (e.g., `JourneyNextStepSelectionSchema`, `CannedResponseDraftSchema`).
+- **GCP Compatibility**:
+  - `redeploy-for-load-testing.sh` updated to handle `latest` image tags and skip builds.
+  - Correctly injects `VERTEX_AI_API_ENDPOINT` and `VERTEX_AI_MODEL` into GCP deployments.
+  - Includes automated validation to ensure `VERTEX_AI_API_ENDPOINT` is correctly set on running pods.
 
 ### Design Decisions
 - **Mock LLM Strategy**: We moved from strict keyword-based heuristics to a **dynamic schema-based generation** approach. If a request provides a `responseSchema`, the mock server recursively generates valid JSON (handling objects, arrays, enums, etc.) to ensure Parlant's Pydantic validation passes. This makes the test robust against future schema changes in Parlant.
+- **GCP Verification**: Added a dedicated check in `redeploy-for-load-testing.sh` to fail fast if the `VERTEX_AI_API_ENDPOINT` environment variable is missing or incorrect on the deployed pods, preventing silent failures where tests run against the real API.
 
 ## Troubleshooting
 
