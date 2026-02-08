@@ -39,8 +39,27 @@ KSA_NAME="parlant-ksa"
 GSA_NAME="parlant-sa"
 GSA_EMAIL="${GSA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 
-# Use timestamp-based image tag to avoid K8s caching issues with "latest"
-IMAGE_TAG=$(date +%Y%m%d-%H%M%S)
+# Determine image tag
+if [ "$1" == "--skip-build" ]; then
+    # Try to find the latest tag in Artifact Registry
+    # This is a bit complex, so for simplicity in skip-build mode we'll look for "latest"
+    # or rely on the user having just built it. 
+    # BETTER APPROACH: List the tags and pick the most recent one.
+    
+    echo "Attempting to find latest image tag..."
+    LATEST_TAG=$(gcloud artifacts docker images list "us-central1-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/mock-llm" --include-tags --sort-by="~UPDATE_TIME" --limit=1 --format="value(TAGS)" 2>/dev/null | cut -d',' -f1)
+    
+    if [ -z "$LATEST_TAG" ]; then
+        echo "Could not find latest tag. Defaulting to 'latest'."
+        IMAGE_TAG="latest"
+    else
+        IMAGE_TAG="$LATEST_TAG"
+        echo "Found latest tag: $IMAGE_TAG"
+    fi
+else
+    # Use timestamp-based image tag to avoid K8s caching issues
+    IMAGE_TAG=$(date +%Y%m%d-%H%M%S)
+fi
 
 # Image paths
 PARLANT_IMAGE="us-central1-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/parlant-agent:latest"
@@ -114,11 +133,20 @@ revert_to_production() {
     echo_step "Reverting to Production Mode (Vertex AI)"
     echo_step "==========================================="
     
-    # Scale down load testing infrastructure
-    echo_info "Scaling down load testing infrastructure..."
-    kubectl scale deployment mock-llm --replicas=0 2>/dev/null || true
-    kubectl scale deployment locust-master --replicas=0 2>/dev/null || true
-    kubectl scale deployment locust-worker --replicas=0 2>/dev/null || true
+    # Scale down and delete load testing infrastructure
+    echo_info "Removing load testing infrastructure..."
+    
+    # Delete Deployments
+    kubectl delete deployment mock-llm 2>/dev/null || true
+    kubectl delete deployment locust-master 2>/dev/null || true
+    kubectl delete deployment locust-worker 2>/dev/null || true
+    
+    # Delete Services
+    kubectl delete service mock-llm 2>/dev/null || true
+    kubectl delete service locust-master 2>/dev/null || true
+    
+    # Delete ConfigMaps
+    kubectl delete configmap locust-script 2>/dev/null || true
     
     # Delete HPA if exists
     kubectl delete hpa parlant-hpa 2>/dev/null || true
@@ -268,21 +296,25 @@ deploy_mock_llm() {
     
     # Wait for pods to be ready
     echo_info "Waiting for mock LLM pods to be ready..."
-    kubectl wait --for=condition=ready pod -l app=mock-llm --timeout=120s
+    # We use a short sleep to let the old pods terminate before waiting for new ones
+    sleep 5
+    # Wait for the deployment to be available rather than individual pods to avoid race conditions
+    kubectl wait --for=condition=available deployment/mock-llm --timeout=120s
     
     # Robust health verification loop
     echo_info "Verifying mock LLM health (may take a moment)..."
     local health_ok=false
-    for i in {1..10}; do
+    for i in {1..20}; do
         # Use kubectl exec to test health from inside the cluster
-        if kubectl get pods -l app=mock-llm -o jsonpath='{.items[0].metadata.name}' 2>/dev/null | \
+        # Filter for Running pods only to avoid hitting terminating ones
+        if kubectl get pods -l app=mock-llm --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}' 2>/dev/null | \
            xargs -I {} kubectl exec {} -- curl -sf http://localhost:8000/health 2>/dev/null; then
             echo_info "Mock LLM health check passed"
             health_ok=true
             break
         fi
-        echo_warn "Health check attempt $i/10 failed, waiting..."
-        sleep 3
+        echo_warn "Health check attempt $i/20 failed, waiting..."
+        sleep 5
     done
     
     if [ "$health_ok" = false ]; then
@@ -343,20 +375,20 @@ spec:
         - containerPort: 8800
         env:
         # Load Testing Mode: Redirect ALL API calls to mock LLM server
-        # The google.genai SDK respects GOOGLE_GEMINI_BASE_URL for the base API URL
+        # We use Vertex AI mode (USE_VERTEX_AI=true) because main.py has specific
+        # monkey-patch logic that redirects Vertex AI calls to the mock server
+        # when VERTEX_AI_API_ENDPOINT contains "mock".
         - name: USE_VERTEX_AI
-          value: "false"
-        - name: GEMINI_API_KEY
-          value: "mock-api-key-for-load-testing"
-        # This is the key env var - redirects ALL Gemini API calls (including embeddings)
-        - name: GOOGLE_GEMINI_BASE_URL
-          value: "http://mock-llm.default.svc.cluster.local:8000"
+          value: "true"
         
         # Keep project info for any other services
         - name: VERTEX_AI_PROJECT_ID
           value: "$PROJECT_ID"
         - name: VERTEX_AI_REGION
           value: "$REGION"
+        - name: VERTEX_AI_MODEL
+          value: "gemini-2.5-flash"
+        # This triggers the redirection in main.py  
         - name: VERTEX_AI_API_ENDPOINT
           value: "mock-llm.default.svc.cluster.local:8000"
         
@@ -485,6 +517,21 @@ validate_deployment() {
     # Check Parlant
     echo_info "Parlant Deployment:"
     kubectl get pods -l app=parlant -o wide
+    echo ""
+    
+    # Verify Parlant Environment Variables
+    echo_info "Verifying Parlant Environment Variables..."
+    local PARLANT_POD=$(kubectl get pods -l app=parlant --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    local API_ENDPOINT=$(kubectl get pod $PARLANT_POD -o jsonpath='{.spec.containers[0].env[?(@.name=="VERTEX_AI_API_ENDPOINT")].value}' 2>/dev/null)
+    
+    if [ "$API_ENDPOINT" == "mock-llm.default.svc.cluster.local:8000" ]; then
+        echo_info "✅ VERTEX_AI_API_ENDPOINT is correctly set to: $API_ENDPOINT"
+    else
+        echo_error "❌ VERTEX_AI_API_ENDPOINT is incorrect or missing on pod $PARLANT_POD"
+        echo_error "   Expected: 'mock-llm.default.svc.cluster.local:8000'"
+        echo_error "   Found:    '$API_ENDPOINT'"
+        exit 1
+    fi
     echo ""
     
     # Check HPA
