@@ -229,6 +229,15 @@ spec:
             path: /healthz
             port: 8800
           initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 1
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /healthz
+            port: 8800
+          failureThreshold: 30
+          periodSeconds: 10
 EOF
     
     echo_info "Waiting for production rollout..."
