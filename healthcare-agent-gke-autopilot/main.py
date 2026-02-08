@@ -10,6 +10,67 @@ from production_config import (
 from auth import ProductionAuthPolicy
 import os
 
+# Monkey-patch for local load testing with Mock LLM
+if os.environ.get("USE_VERTEX_AI") == "true" and "mock" in os.environ.get("VERTEX_AI_API_ENDPOINT", ""):
+    print("DEBUG: Applying monkey-patch for Vertex AI local load testing")
+    
+    # 1. Mock Credentials
+    from google.auth.credentials import Credentials
+    import google.auth
+    from unittest.mock import MagicMock
+    
+    class MockCredentials(Credentials):
+        def refresh(self, request):
+            self.token = "dummy_token"
+        def apply(self, headers):
+            headers["Authorization"] = "Bearer dummy_token"
+        def before_request(self, request, headers):
+            self.apply(headers)
+            
+    google.auth.default = MagicMock(return_value=(MockCredentials(), "local-project"))
+    
+    # 2. Patch httpx to redirect traffic
+    import httpx
+    import re
+    
+    original_ac_request = httpx.AsyncClient.request
+    
+    async def mocked_ac_request(self, method, url, *args, **kwargs):
+        str_url = str(url)
+        if "aiplatform.googleapis.com" in str_url:
+            print(f"DEBUG: Redirecting Vertex AI call (Async): {str_url}")
+            new_url = re.sub(r"https://.*aiplatform\.googleapis\.com", "http://mock-llm:8000", str_url)
+            new_url = re.sub(
+                r"/v1beta1/projects/.*/locations/.*/publishers/google/models/(.*)", 
+                r"/v1beta/models/\1", 
+                new_url
+            )
+            print(f"DEBUG: Redirected to: {new_url}")
+            return await original_ac_request(self, method, new_url, *args, **kwargs)
+            
+        return await original_ac_request(self, method, url, *args, **kwargs)
+        
+    httpx.AsyncClient.request = mocked_ac_request
+
+    original_c_request = httpx.Client.request
+
+    def mocked_c_request(self, method, url, *args, **kwargs):
+        str_url = str(url)
+        if "aiplatform.googleapis.com" in str_url:
+            print(f"DEBUG: Redirecting Vertex AI call (Sync): {str_url}")
+            new_url = re.sub(r"https://.*aiplatform\.googleapis\.com", "http://mock-llm:8000", str_url)
+            new_url = re.sub(
+                r"/v1beta1/projects/.*/locations/.*/publishers/google/models/(.*)", 
+                r"/v1beta/models/\1", 
+                new_url
+            )
+            print(f"DEBUG: Redirected to: {new_url}")
+            return original_c_request(self, method, new_url, *args, **kwargs)
+            
+        return original_c_request(self, method, url, *args, **kwargs)
+
+    httpx.Client.request = mocked_c_request
+
 async def configure_container(container: p.Container) -> p.Container:
     """Configure production-specific dependencies."""
 
@@ -61,15 +122,26 @@ async def get_lab_results(context: p.ToolContext) -> p.ToolResult:
 
 
 async def add_domain_glossary(agent: p.Agent) -> None:
-    await agent.create_term(
-        name="Office Phone Number",
-        description="The phone number of our office, at +1-234-567-8900",
-    )
+    print("DEBUG: add_domain_glossary started")
+    try:
+        await agent.create_term(
+            name="Office Phone Number",
+            description="The phone number of our office, at +1-234-567-8900",
+        )
+        print("DEBUG: term 'Office Phone Number' created")
+    except BaseException as e:
+        print(f"DEBUG: Failed to create term 'Office Phone Number': {e}")
+        raise
 
-    await agent.create_term(
-        name="Office Hours",
-        description="Office hours are Monday to Friday, 9 AM to 5 PM",
-    )
+    try:
+        await agent.create_term(
+            name="Office Hours",
+            description="Office hours are Monday to Friday, 9 AM to 5 PM",
+        )
+        print("DEBUG: term 'Office Hours' created")
+    except BaseException as e:
+        print(f"DEBUG: Failed to create term 'Office Hours': {e}")
+        raise
 
     await agent.create_term(
         name="Charles Xavier",
@@ -178,9 +250,13 @@ async def create_lab_results_journey(server: p.Server, agent: p.Agent) -> p.Jour
 
 
 async def setup_agent_behavior(server: p.Server, agent: p.Agent) -> None:
+    print("DEBUG: setup_agent_behavior started")
     await add_domain_glossary(agent)
+    print("DEBUG: add_domain_glossary done")
     scheduling_journey = await create_scheduling_journey(server, agent)
+    print("DEBUG: create_scheduling_journey done")
     lab_results_journey = await create_lab_results_journey(server, agent)
+    print("DEBUG: create_lab_results_journey done")
 
     status_inquiry = await agent.create_observation(
         "The patient asks to follow up on their visit, but it's not clear in which way",
@@ -207,9 +283,10 @@ async def setup_agent_behavior(server: p.Server, agent: p.Agent) -> None:
     )
 
     await agent.create_guideline(
-        condition="The patient inquires about something that has nothing to do with our healthcare",
+        condition="The patient request is off-topic",
         action="Kindly tell them you cannot assist with off-topic inquiries - do not engage with their request.",
     )
+    print("DEBUG: setup_agent_behavior finished")
 
 
 async def main() -> None:
@@ -227,6 +304,14 @@ async def main() -> None:
             **mongodb_config
         ) as server:
             print("DEBUG: Server context entered")
+            print(f"DEBUG: Configured HOST={SERVER_HOST}, PORT={SERVER_PORT}")
+            # Try to print server attributes to see if it bound unexpectedly
+            try:
+                print(f"DEBUG: Server object: {server}")
+                if hasattr(server, 'port'):
+                     print(f"DEBUG: Server.port: {server.port}")
+            except Exception as e:
+                print(f"DEBUG: Could not inspect server: {e}")
             # Create or retrieve your agent
             agents = await server.list_agents()
             print(f"DEBUG: Found {len(agents)} existing agents")
@@ -243,6 +328,18 @@ async def main() -> None:
                 await setup_agent_behavior(server, agent)
             else:
                 print("DEBUG: Using existing agent")
+            
+            # Keep the server running
+            print("DEBUG: Server running. Press Ctrl+C to stop.")
+            # Create a future that never completes
+            # try:
+            #     await asyncio.get_running_loop().create_future()
+            # except asyncio.CancelledError:
+            #     print("DEBUG: Main task cancelled!")
+            #     raise
+            # except BaseException as e:
+            #     print(f"DEBUG: Exception during wait: {type(e).__name__}: {e}")
+            #     raise
             
     except Exception as e:
         print(f"ERROR: Exception in main(): {type(e).__name__}: {e}")

@@ -16,12 +16,22 @@ Configuration via environment variables:
 
 import os
 import time
+import datetime
+import jwt
 from locust import HttpUser, task, events, between
 
 
 # Configuration
 POLL_TIMEOUT = int(os.environ.get("POLL_TIMEOUT", "60"))
 POLL_WAIT_FOR_DATA = int(os.environ.get("POLL_WAIT_FOR_DATA", "10"))
+JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "local-secret-key")
+
+def generate_token():
+    payload = {
+        "sub": "load_test_user",
+        "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1)
+    }
+    return jwt.encode(payload, JWT_SECRET_KEY, algorithm="HS256")
 
 # Test messages for different user types
 QUICK_MESSAGES = [
@@ -53,6 +63,10 @@ class ParlantUser(HttpUser):
     
     def on_start(self):
         """Initialize user session on test start."""
+        # Authenticate
+        token = generate_token()
+        self.client.headers.update({"Authorization": f"Bearer {token}"})
+
         self.agent_id = os.environ.get("PARLANT_AGENT_ID")
         self.session_id = None
         self.last_offset = 0
@@ -88,7 +102,7 @@ class ParlantUser(HttpUser):
             catch_response=True,
             name="/sessions (create)"
         ) as response:
-            if response.status_code == 200:
+            if response.status_code in [200, 201]:
                 data = response.json()
                 self.session_id = data.get("id")
                 self.last_offset = 0
@@ -186,7 +200,7 @@ class ParlantUser(HttpUser):
             catch_response=True,
             name="/sessions/{id}/events (send)"
         ) as response:
-            if response.status_code != 200:
+            if response.status_code not in [200, 201]:
                 response.failure(f"Failed to send message: {response.status_code}")
                 return
             response.success()
@@ -218,6 +232,10 @@ class IdlerUser(HttpUser):
     
     def on_start(self):
         """Create a session that will be mostly idle."""
+        # Authenticate
+        token = generate_token()
+        self.client.headers.update({"Authorization": f"Bearer {token}"})
+
         self.agent_id = os.environ.get("PARLANT_AGENT_ID")
         self.session_id = None
         self.last_offset = 0
@@ -238,7 +256,7 @@ class IdlerUser(HttpUser):
                 catch_response=True,
                 name="/sessions (create idle)"
             ) as response:
-                if response.status_code == 200:
+                if response.status_code in [200, 201]:
                     self.session_id = response.json().get("id")
                     response.success()
     

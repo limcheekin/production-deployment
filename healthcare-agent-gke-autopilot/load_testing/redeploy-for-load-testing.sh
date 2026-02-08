@@ -229,17 +229,17 @@ build_images() {
     
     # Authenticate Docker using gcloud access token (works with sudo docker)
     echo_info "Configuring Docker authentication..."
-    gcloud auth print-access-token | sudo docker login -u oauth2accesstoken --password-stdin https://us-central1-docker.pkg.dev
+    gcloud auth print-access-token | docker login -u oauth2accesstoken --password-stdin https://us-central1-docker.pkg.dev
     
     # Build mock LLM image (--no-cache ensures latest code is included)
     echo_info "Building mock LLM server image..."
-    sudo docker build --no-cache -t "$MOCK_LLM_IMAGE" \
+    docker build --no-cache -t "$MOCK_LLM_IMAGE" \
         -f "$SCRIPT_DIR/Dockerfile" \
         "$SCRIPT_DIR/"
     
     # Push image
     echo_info "Pushing mock LLM image to Artifact Registry..."
-    sudo docker push "$MOCK_LLM_IMAGE"
+    docker push "$MOCK_LLM_IMAGE"
     
     echo_info "Images built and pushed successfully"
 }
@@ -357,6 +357,8 @@ spec:
           value: "$PROJECT_ID"
         - name: VERTEX_AI_REGION
           value: "$REGION"
+        - name: VERTEX_AI_API_ENDPOINT
+          value: "mock-llm.default.svc.cluster.local:8000"
         
         # Sensitive Data from Secrets (unchanged)
         - name: MONGODB_SESSIONS_URI

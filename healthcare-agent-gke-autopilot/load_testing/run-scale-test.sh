@@ -23,12 +23,30 @@
 
 set -e
 
+# Activate virtual environment if it exists (for local testing)
+if [ -d ".venv" ]; then
+    echo "Activating virtual environment..."
+    source .venv/bin/activate
+elif [ -d "../.venv" ]; then
+    echo "Activating virtual environment (from parent)..."
+    source ../.venv/bin/activate
+fi
+
 # Configuration
 PROJECT_ID=$(gcloud config get-value project)
 REGION="us-central1"
 INGRESS_IP=$(gcloud compute addresses describe parlant-global-ip --global --format='value(address)' 2>/dev/null || echo "")
 PARLANT_URL="http://${INGRESS_IP}"  # Ingress exposes on port 80
 LOCUST_HOST="${LOCUST_HOST:-$PARLANT_URL}"
+
+# Attempt to fetch JWT_SECRET_KEY from K8s if not set locally
+if [ -z "$JWT_SECRET_KEY" ] && command -v kubectl &>/dev/null; then
+    # Only try if we have access to the cluster
+    if kubectl get secret parlant-secrets &>/dev/null; then
+        echo "Fetching JWT_SECRET_KEY from cluster..."
+        export JWT_SECRET_KEY=$(kubectl get secret parlant-secrets -o jsonpath='{.data.jwt-secret-key}' | base64 -d)
+    fi
+fi
 
 # Colors for output
 RED='\033[0;31m'
@@ -76,9 +94,9 @@ run_baseline() {
     
     locust -f load_testing/locust_load_test.py \
         --headless \
-        -u 5 \
-        -r 1 \
-        -t 5m \
+        -u "${LOCUST_USERS:-5}" \
+        -r "${LOCUST_SPAWN_RATE:-1}" \
+        -t "${LOCUST_RUN_TIME:-5m}" \
         --host "$LOCUST_HOST" \
         --csv=results/baseline \
         --html=results/baseline_report.html
@@ -172,6 +190,54 @@ run_chaos() {
     echo_info "Chaos test complete. Review recovery metrics in results/chaos_report.html"
 }
 
+# Run locally using Docker Compose
+run_local() {
+    echo_info "=========================================="
+    echo_info "Running Local Scale Test"
+    echo_info "=========================================="
+    
+    # Check for docker-compose or docker compose
+    if command -v docker-compose &>/dev/null; then
+        DOCKER_COMPOSE="docker-compose"
+    elif docker compose version &>/dev/null; then
+        DOCKER_COMPOSE="docker compose"
+    else
+        echo_error "docker-compose not found. Please install Docker Desktop or docker-compose."
+        exit 1
+    fi
+    
+    echo_info "Starting services with $DOCKER_COMPOSE..."
+    cd load_testing
+    $DOCKER_COMPOSE up -d --build
+    
+    echo_info "Waiting for services to be ready..."
+    # Simple wait for startup
+    sleep 10
+    
+    echo_info "Checking Mock LLM health..."
+    if ! curl -s http://localhost:8000/health > /dev/null; then
+         echo_warn "Mock LLM endpoint not reachable on localhost:8000 yet. Waiting..."
+         sleep 10
+    fi
+    
+    echo_info "Checking Parlant health..."
+    if ! curl -s http://localhost:8800/health > /dev/null; then
+         echo_warn "Parlant endpoint not reachable on localhost:8800 yet. Waiting..."
+         sleep 10
+    fi
+    
+    cd ..
+    
+    # Run baseline test against localhost
+    export LOCUST_HOST="http://localhost:8800"
+    
+    echo_info "Running baseline test against local environment..."
+    run_baseline
+    
+    echo_info "Local test complete."
+    echo_info "To stop services: cd load_testing && $DOCKER_COMPOSE down"
+}
+
 # Deploy test infrastructure
 deploy_test_infra() {
     echo_info "Deploying test infrastructure..."
@@ -205,10 +271,15 @@ deploy_test_infra() {
 
 # Main execution
 main() {
-    check_prerequisites
     mkdir -p results
     
-    case "${1:-all}" in
+    MODE="${1:-all}"
+    
+    if [ "$MODE" != "local" ] && [ "$MODE" != "deploy" ]; then
+        check_prerequisites
+    fi
+    
+    case "$MODE" in
         1|baseline)
             run_baseline
             ;;
@@ -220,6 +291,9 @@ main() {
             ;;
         4|chaos)
             run_chaos
+            ;;
+        local)
+            run_local
             ;;
         deploy)
             deploy_test_infra
@@ -233,7 +307,7 @@ main() {
             echo_info "Run './run-scale-test.sh soak' or './run-scale-test.sh chaos' manually if needed."
             ;;
         *)
-            echo "Usage: $0 [baseline|kneepoint|soak|chaos|deploy|all]"
+            echo "Usage: $0 [baseline|kneepoint|soak|chaos|deploy|all|local]"
             exit 1
             ;;
     esac

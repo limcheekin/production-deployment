@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  parlant:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    ports:
+      - "8800:8800"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - SERVER_PORT=8800
+      - USE_VERTEX_AI=true
+      - VERTEX_AI_PROJECT_ID=local-project
+      - VERTEX_AI_REGION=us-central1
+      - VERTEX_AI_MODEL=gemini-2.5-flash
+      - VERTEX_AI_API_ENDPOINT=mock-llm:8000
+      - MONGODB_SESSIONS_URI=mongodb://mongodb:27017/sessions
+      - MONGODB_CUSTOMERS_URI=mongodb://mongodb:27017/customers
+      - JWT_SECRET_KEY=local-secret-key
+    depends_on:
+      - mongodb
+      - mock-llm
+    networks:
+      - parlant-network
+
+  mock-llm:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - MOCK_MIN_LATENCY=0.5
+      - MOCK_MAX_LATENCY=2.0
+      - MOCK_TOKEN_DELAY=0.05
+      - MOCK_TOKEN_COUNT=20
+    networks:
+      - parlant-network
+
+  mongodb:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    networks:
+      - parlant-network
+
+networks:
+  parlant-network:
+    driver: bridge
