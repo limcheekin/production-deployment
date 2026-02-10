@@ -5,6 +5,8 @@ REGION="us-central1"
 PROJECT_ID=$(gcloud config get-value project)
 SERVICE_ACCOUNT="parlant-sa@${PROJECT_ID}.iam.gserviceaccount.com"
 KSA_NAME="parlant-ksa"
+OTEL_GSA_NAME="parlant-otel-sa"
+OTEL_GSA_EMAIL="${OTEL_GSA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 NAMESPACE="default"
 
 echo "--- Starting Cleanup for Project: $PROJECT_ID ---"
@@ -23,6 +25,7 @@ kubectl delete service parlant-service --ignore-not-found=true
 
 echo "      - Deleting Deployment..."
 kubectl delete deployment parlant --ignore-not-found=true
+kubectl delete deployment otel-collector --ignore-not-found=true
 
 echo "      - Deleting BackendConfig..."
 kubectl delete backendconfig parlant-backend-config --ignore-not-found=true
@@ -110,6 +113,16 @@ gcloud compute networks delete parlant-vpc --quiet
 
 # 5. Clean up IAM & Security
 echo "[5/7] Cleaning up IAM & Security..."
+
+echo "      - Cleaning up OTEL Identity..."
+# Remove roles from OTEL SA
+for ROLE in "roles/cloudtrace.agent" "roles/monitoring.metricWriter" "roles/logging.logWriter"; do
+    gcloud projects remove-iam-policy-binding $PROJECT_ID \
+        --member "serviceAccount:$OTEL_GSA_EMAIL" \
+        --role "$ROLE" --quiet 2>/dev/null || true
+done
+# Delete OTEL SA
+gcloud iam service-accounts delete $OTEL_GSA_EMAIL --quiet || echo "      OTEL SA already deleted or not found."
 
 echo "      - Removing Workload Identity Binding..."
 gcloud iam service-accounts remove-iam-policy-binding $SERVICE_ACCOUNT \

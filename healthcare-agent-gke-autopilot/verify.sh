@@ -27,6 +27,8 @@ NAT_NAME="parlant-nat"
 GSA_NAME="parlant-sa"
 GSA_EMAIL="${GSA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 KSA_NAME="parlant-ksa"
+OTEL_GSA_NAME="parlant-otel-sa"
+OTEL_GSA_EMAIL="${OTEL_GSA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 NAMESPACE="default"
 REPO_NAME="parlant-repo"
 IMAGE_NAME="parlant-agent"
@@ -231,6 +233,25 @@ else
     check_fail "GCP Service Account '$GSA_NAME' does NOT exist"
 fi
 
+# 6.b Verify OTEL Service Account
+echo ""
+echo "  [OTEL Service Account]"
+if gcloud iam service-accounts describe $OTEL_GSA_EMAIL &>/dev/null; then
+    check_pass "GCP Service Account '$OTEL_GSA_NAME' exists"
+
+    # Check for Observability roles
+    for ROLE in "roles/cloudtrace.agent" "roles/monitoring.metricWriter" "roles/logging.logWriter"; do
+        HAS_ROLE=$(gcloud projects get-iam-policy $PROJECT_ID --flatten="bindings[].members" --format="value(bindings.role)" --filter="bindings.members:serviceAccount:$OTEL_GSA_EMAIL AND bindings.role:$ROLE" 2>/dev/null || echo "")
+        if [[ -n "$HAS_ROLE" ]]; then
+            check_pass "Role '$ROLE' assigned"
+        else
+            check_warn "Role '$ROLE' may be missing"
+        fi
+    done
+else
+    check_fail "GCP Service Account '$OTEL_GSA_NAME' does NOT exist"
+fi
+
 # ==============================================================================
 # 7. Verify Global Static IP
 # ==============================================================================
@@ -359,6 +380,38 @@ else
         check_info "Deployed image: $DEPLOYED_IMAGE"
     else
         check_fail "Deployment 'parlant' does NOT exist"
+    fi
+
+    echo ""
+    echo "  [OpenTelemetry Collector]"
+    if kubectl get deployment otel-collector -n $NAMESPACE &>/dev/null; then
+        check_pass "Deployment 'otel-collector' exists"
+
+        # Check replicas
+        READY=$(kubectl get deployment otel-collector -n $NAMESPACE -o jsonpath='{.status.readyReplicas}' 2>/dev/null)
+        READY=${READY:-0}
+        if [[ "$READY" -ge 2 ]]; then
+            check_pass "Collector HA ready: $READY replicas"
+        else
+            check_warn "Collector replicas: $READY (expected >= 2)"
+        fi
+
+        # Connectivity Check (Internal)
+        echo "    - Verifying Collector Connectivity (Internal)..."
+        # Use a temporary ephemeral pod to curl the collector's health endpoint
+        if kubectl run curl-test-$RANDOM --image=curlimages/curl --restart=Never --rm -i -- -s -f http://otel-collector:13133/ &>/dev/null; then
+            check_pass "Collector is reachable and HEALTHY (Port 13133)"
+        else
+            # Try checking OTLP port if health check fails/is unreachable
+            HTTP_CODE=$(kubectl run curl-test-$RANDOM --image=curlimages/curl --restart=Never --rm -i -- -s -o /dev/null -w "%{http_code}" -X POST http://otel-collector:4318/v1/traces || echo "000")
+            if [[ "$HTTP_CODE" != "000" ]]; then
+               check_pass "Collector OTLP endpoint reachable (HTTP $HTTP_CODE)"
+            else
+               check_warn "Collector Unreachable from within cluster"
+            fi
+        fi
+    else
+        check_fail "Deployment 'otel-collector' does NOT exist"
     fi
     
     # 8.6 Verify Pods

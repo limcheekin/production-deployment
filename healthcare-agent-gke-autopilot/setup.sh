@@ -16,6 +16,9 @@ NAT_NAME="parlant-nat"
 GSA_NAME="parlant-sa"
 GSA_EMAIL="${GSA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 KSA_NAME="parlant-ksa"
+OTEL_GSA_NAME="parlant-otel-sa"
+OTEL_GSA_EMAIL="${OTEL_GSA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+OTEL_KSA_NAME="otel-collector-ksa"
 NAMESPACE="default"
 REPO_NAME="parlant-repo"
 IMAGE_NAME="parlant-agent"
@@ -174,6 +177,28 @@ gcloud iam service-accounts add-iam-policy-binding $GSA_EMAIL \
     --role roles/iam.workloadIdentityUser \
     --member "serviceAccount:${PROJECT_ID}.svc.id.goog[${NAMESPACE}/${KSA_NAME}]" --quiet > /dev/null
 
+# ------------------------------------------------------------------------------
+# 4.1.b Workload Identity for OpenTelemetry
+# ------------------------------------------------------------------------------
+echo "    - Configuring OTEL Workload Identity..."
+if ! gcloud iam service-accounts describe $OTEL_GSA_EMAIL &>/dev/null; then
+    gcloud iam service-accounts create $OTEL_GSA_NAME --display-name "Parlant OpenTelemetry Service Account" --quiet
+    echo "    - Waiting for OTEL service account to propagate..."
+    sleep 10
+fi
+
+# Grant Observability Roles
+for ROLE in "roles/cloudtrace.agent" "roles/monitoring.metricWriter" "roles/logging.logWriter"; do
+    gcloud projects add-iam-policy-binding $PROJECT_ID \
+        --member "serviceAccount:$OTEL_GSA_EMAIL" \
+        --role "$ROLE" --quiet > /dev/null
+done
+
+# Bind OTEL KSA to OTEL GSA
+gcloud iam service-accounts add-iam-policy-binding $OTEL_GSA_EMAIL \
+    --role roles/iam.workloadIdentityUser \
+    --member "serviceAccount:${PROJECT_ID}.svc.id.goog[${NAMESPACE}/${OTEL_KSA_NAME}]" --quiet > /dev/null
+
 # 4.2 Secrets Management
 echo "    - Configuring Secrets..."
 if kubectl get secret parlant-secrets &>/dev/null; then
@@ -193,6 +218,146 @@ echo "    - Generating Kubernetes Manifests..."
 
 # Generate k8s-manifests.yaml
 cat <<EOF > k8s-manifests.yaml
+# ==============================================================================
+# OpenTelemetry Collector (Gateway)
+# ==============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-conf
+data:
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      batch:
+        send_batch_size: 200
+        send_batch_max_size: 1000
+        timeout: 10s
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 800
+        spike_limit_mib: 200
+      resourcedetection:
+        detectors: [gcp]
+        timeout: 10s
+        override: false
+
+    exporters:
+      googlecloud:
+        log:
+          default_log_name: opentelemetry.io/collector-exported-log
+      googlemanagedprometheus:
+
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+
+    service:
+      extensions: [health_check]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, batch, resourcedetection]
+          exporters: [googlecloud]
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, batch, resourcedetection]
+          exporters: [googlemanagedprometheus]
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, batch, resourcedetection]
+          exporters: [googlecloud]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector
+  labels:
+    app: otel-collector
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: otel-collector
+  template:
+    metadata:
+      labels:
+        app: otel-collector
+    spec:
+      serviceAccountName: $OTEL_KSA_NAME
+      securityContext:
+        runAsUser: 1000
+        runAsNonRoot: true
+      containers:
+      - name: otel-collector
+        image: otel/opentelemetry-collector-contrib:0.96.0
+        args:
+          - "--config=/conf/config.yaml"
+        ports:
+          - containerPort: 4317 # OTLP gRPC
+          - containerPort: 4318 # OTLP HTTP
+          - containerPort: 13133 # Health Check
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: 500m
+            memory: 1Gi
+        volumeMounts:
+          - name: otel-collector-conf
+            mountPath: /conf
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 13133
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 13133
+          initialDelaySeconds: 10
+          periodSeconds: 10
+      volumes:
+        - name: otel-collector-conf
+          configMap:
+            name: otel-collector-conf
+            items:
+              - key: config.yaml
+                path: config.yaml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  labels:
+    app: otel-collector
+spec:
+  type: ClusterIP
+  selector:
+    app: otel-collector
+  ports:
+    - name: grpc
+      port: 4317
+      targetPort: 4317
+    - name: http
+      port: 4318
+      targetPort: 4318
+    - name: health
+      port: 13133
+      targetPort: 13133
+---
+# ==============================================================================
+# Parlant Application
+# ==============================================================================
 # BackendConfig
 apiVersion: cloud.google.com/v1
 kind: BackendConfig
@@ -266,6 +431,18 @@ spec:
         - name: VERTEX_AI_MODEL
           value: "gemini-2.5-flash"
         
+        # OpenTelemetry Config
+        - name: OTEL_SERVICE_NAME
+          value: "parlant"
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: "service.name=parlant,service.namespace=default"
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://otel-collector:4318"
+        - name: OTEL_EXPORTER_OTLP_PROTOCOL
+          value: "http/protobuf"
+        - name: OTEL_EXPORTER_OTLP_INSECURE
+          value: "true"
+        
         # Sensitive Data from Secrets
         - name: MONGODB_SESSIONS_URI
           valueFrom:
@@ -302,6 +479,12 @@ spec:
             path: /healthz
             port: 8800
           initialDelaySeconds: 10
+        startupProbe:
+          httpGet:
+            path: /healthz
+            port: 8800
+          failureThreshold: 30
+          periodSeconds: 10
 ---
 # Service Account
 apiVersion: v1
@@ -310,6 +493,14 @@ metadata:
   name: $KSA_NAME
   annotations:
     iam.gke.io/gcp-service-account: $GSA_EMAIL
+---
+# OTEL Service Account
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: $OTEL_KSA_NAME
+  annotations:
+    iam.gke.io/gcp-service-account: $OTEL_GSA_EMAIL
 EOF
 
 echo "    - Applying Core Manifests..."

@@ -153,92 +153,51 @@ revert_to_production() {
     
     # Regenerate production deployment manifest
     echo_info "Regenerating production deployment..."
-    cat <<EOF | kubectl apply -f -
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: parlant
-spec:
-  replicas: 2
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 1
-      maxSurge: 1
-  selector:
-    matchLabels:
-      app: parlant
-  template:
-    metadata:
-      labels:
-        app: parlant
+    # Remove Load Testing Specific Env Vars (Revert to Vertex AI)
+    echo_info "Removing mock LLM configuration..."
+    kubectl set env deployment/parlant VERTEX_AI_API_ENDPOINT-
+
+    # Patch Resources and Probes back to Production values
+    echo_info "Restoring production resources and probes..."
+    kubectl patch deployment parlant --type='strategic' -p '
     spec:
-      serviceAccountName: $KSA_NAME
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 999
-      containers:
-      - name: parlant
-        image: $PARLANT_IMAGE
-        ports:
-        - containerPort: 8800
-        env:
-        # Production: Use Vertex AI
-        - name: USE_VERTEX_AI
-          value: "true"
-        - name: VERTEX_AI_PROJECT_ID
-          value: "$PROJECT_ID"
-        - name: VERTEX_AI_REGION
-          value: "$REGION"
-        - name: VERTEX_AI_MODEL
-          value: "gemini-2.5-flash"
-        
-        # Sensitive Data from Secrets
-        - name: MONGODB_SESSIONS_URI
-          valueFrom:
-            secretKeyRef:
-              name: parlant-secrets
-              key: mongodb-sessions-uri
-        - name: MONGODB_CUSTOMERS_URI
-          valueFrom:
-            secretKeyRef:
-              name: parlant-secrets
-              key: mongodb-customers-uri
-        - name: JWT_SECRET_KEY
-          valueFrom:
-            secretKeyRef:
-              name: parlant-secrets
-              key: jwt-secret-key
-        resources:
-          requests:
-            cpu: "2000m"
-            memory: "4Gi"
-          limits:
-            cpu: "2000m"
-            memory: "4Gi"
-        livenessProbe:
-          httpGet:
-            path: /healthz
-            port: 8800
-          initialDelaySeconds: 30
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 3            
-        readinessProbe:
-          httpGet:
-            path: /healthz
-            port: 8800
-          initialDelaySeconds: 10
-          periodSeconds: 10
-          timeoutSeconds: 1
-          failureThreshold: 3
-        startupProbe:
-          httpGet:
-            path: /healthz
-            port: 8800
-          failureThreshold: 30
-          periodSeconds: 10
-EOF
+      replicas: 2
+      template:
+        spec:
+          containers:
+          - name: parlant
+            resources:
+              requests:
+                cpu: "500m"
+                memory: "1Gi"
+              limits:
+                cpu: "1000m"
+                memory: "2Gi"
+            livenessProbe:
+              httpGet:
+                path: /healthz
+                port: 8800
+              initialDelaySeconds: 30
+              periodSeconds: 10
+              timeoutSeconds: 5
+              failureThreshold: 3
+            readinessProbe:
+              httpGet:
+                path: /healthz
+                port: 8800
+              initialDelaySeconds: 10
+              periodSeconds: 10
+              timeoutSeconds: 5
+              failureThreshold: 3
+            # startupProbe is not present in setup.sh, so we leave it or remove it?
+            # Providing a null startupProbe to remove it if it was added.
+            startupProbe:
+              httpGet:
+                path: /healthz
+                port: 8800
+              failureThreshold: 30
+              periodSeconds: 10
+    '
     
     echo_info "Waiting for production rollout..."
     kubectl rollout status deployment/parlant --timeout=300s
@@ -353,100 +312,38 @@ reconfigure_parlant() {
     # - USE_VERTEX_AI=false
     # - GEMINI_API_KEY=mock-key (required by SDK when not using Vertex AI)
     # - GOOGLE_GEMINI_BASE_URL pointing to mock LLM service
-    cat <<EOF | kubectl apply -f -
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: parlant
-spec:
-  replicas: 2
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 1
-      maxSurge: 1
-  selector:
-    matchLabels:
-      app: parlant
-  template:
-    metadata:
-      labels:
-        app: parlant
+    echo_info "Updating Parlant deployment with mock LLM configuration (PATCH)..."
+
+    # 1. Update Env Vars for Mock LLM
+    kubectl set env deployment/parlant \
+        USE_VERTEX_AI="true" \
+        VERTEX_AI_API_ENDPOINT="mock-llm.default.svc.cluster.local:8000" \
+        VERTEX_AI_PROJECT_ID="$PROJECT_ID" \
+        VERTEX_AI_REGION="$REGION"
+
+    # 2. Patch Resources and Probes for Load Testing
+    # Note: We use 'strategic' merge patch.
+    kubectl patch deployment parlant --type='strategic' -p '
     spec:
-      serviceAccountName: $KSA_NAME
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 999
-      containers:
-      - name: parlant
-        image: $PARLANT_IMAGE
-        ports:
-        - containerPort: 8800
-        env:
-        # Load Testing Mode: Redirect ALL API calls to mock LLM server
-        # We use Vertex AI mode (USE_VERTEX_AI=true) because main.py has specific
-        # monkey-patch logic that redirects Vertex AI calls to the mock server
-        # when VERTEX_AI_API_ENDPOINT contains "mock".
-        - name: USE_VERTEX_AI
-          value: "true"
-        
-        # Keep project info for any other services
-        - name: VERTEX_AI_PROJECT_ID
-          value: "$PROJECT_ID"
-        - name: VERTEX_AI_REGION
-          value: "$REGION"
-        - name: VERTEX_AI_MODEL
-          value: "gemini-2.5-flash"
-        # This triggers the redirection in main.py  
-        - name: VERTEX_AI_API_ENDPOINT
-          value: "mock-llm.default.svc.cluster.local:8000"
-        
-        # Sensitive Data from Secrets (unchanged)
-        - name: MONGODB_SESSIONS_URI
-          valueFrom:
-            secretKeyRef:
-              name: parlant-secrets
-              key: mongodb-sessions-uri
-        - name: MONGODB_CUSTOMERS_URI
-          valueFrom:
-            secretKeyRef:
-              name: parlant-secrets
-              key: mongodb-customers-uri
-        - name: JWT_SECRET_KEY
-          valueFrom:
-            secretKeyRef:
-              name: parlant-secrets
-              key: jwt-secret-key
-        resources:
-          requests:
-            cpu: "2000m"
-            memory: "4Gi"
-          limits:
-            cpu: "2000m"
-            memory: "4Gi"
-        livenessProbe:
-          httpGet:
-            path: /healthz
-            port: 8800
-          initialDelaySeconds: 10
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 3            
-        readinessProbe:
-          httpGet:
-            path: /healthz
-            port: 8800
-          initialDelaySeconds: 10
-          periodSeconds: 10
-          timeoutSeconds: 1
-          failureThreshold: 3
-        startupProbe:
-          httpGet:
-            path: /healthz
-            port: 8800
-          failureThreshold: 30
-          periodSeconds: 10
-EOF
+      replicas: 2
+      template:
+        spec:
+          containers:
+          - name: parlant
+            resources:
+              requests:
+                cpu: "2000m"
+                memory: "4Gi"
+              limits:
+                cpu: "2000m"
+                memory: "4Gi"
+            startupProbe:
+              httpGet:
+                path: /healthz
+                port: 8800
+              failureThreshold: 30
+              periodSeconds: 10
+    '
 
     echo_info "Waiting for Parlant rollout (timeout: 600s)..."
     if ! kubectl rollout status deployment/parlant --timeout=600s; then
