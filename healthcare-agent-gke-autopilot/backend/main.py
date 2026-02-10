@@ -319,6 +319,7 @@ async def main() -> None:
             if not agents:
                 print("DEBUG: Creating new agent")
                 agent = await server.create_agent(
+                    id="healthcare-agent",
                     name="Healthcare Agent",
                     description="Is empathetic and calming to the patient.",
                 )
