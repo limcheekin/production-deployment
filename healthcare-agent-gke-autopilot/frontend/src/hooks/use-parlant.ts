@@ -56,6 +56,9 @@ export function useParlantSession() {
     // Helper to merge chunks into content
     const getMessageContent = (event: ParlantEvent): string => {
         if (event.message) return event.message;
+        if (event.data?.message && typeof event.data.message === 'string') {
+            return event.data.message;
+        }
         if (event.data?.chunks && Array.isArray(event.data.chunks)) {
             return event.data.chunks
                 .filter(c => typeof c === 'string')
