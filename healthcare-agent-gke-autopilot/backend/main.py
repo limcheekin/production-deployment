@@ -322,6 +322,7 @@ async def main() -> None:
                     id="healthcare-agent",
                     name="Healthcare Agent",
                     description="Is empathetic and calming to the patient.",
+                    output_mode=p.OutputMode.STREAM,
                 )
 
                 # Set up your guidelines, journeys, etc.

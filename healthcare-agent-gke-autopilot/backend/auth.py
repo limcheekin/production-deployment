@@ -24,10 +24,16 @@ class ProductionAuthPolicy(p.ProductionAuthorizationPolicy):
 
     async def check_permission(self, request, operation) -> bool:
         auth_header = request.headers.get("Authorization")
-        if not auth_header or not auth_header.startswith("Bearer "):
+        token = None
+        
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+        elif "token" in request.query_params:
+            token = request.query_params["token"]
+            
+        if not token:
             return False
             
-        token = auth_header.split(" ")[1]
         try:
             jwt.decode(token, self.secret_key, algorithms=["HS256"])
             return True
