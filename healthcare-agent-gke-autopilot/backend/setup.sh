@@ -483,7 +483,7 @@ spec:
           httpGet:
             path: /healthz
             port: 8800
-          failureThreshold: 30
+          failureThreshold: 60
           periodSeconds: 10
 ---
 # Service Account
