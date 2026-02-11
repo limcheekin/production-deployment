@@ -70,6 +70,18 @@ if os.environ.get("USE_VERTEX_AI") == "true" and "mock" in os.environ.get("VERTE
         return original_c_request(self, method, url, *args, **kwargs)
 
     httpx.Client.request = mocked_c_request
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+async def configure_api(app: FastAPI) -> None:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # In production, specify your frontend domain
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
 
 async def configure_container(container: p.Container) -> p.Container:
     """Configure production-specific dependencies."""
@@ -301,6 +313,7 @@ async def main() -> None:
             port=SERVER_PORT,
             nlp_service=NLP_SERVICE,
             configure_container=configure_container,
+            configure_api=configure_api,
             migrate=True,
             **mongodb_config
         ) as server:
