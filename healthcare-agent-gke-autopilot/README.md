@@ -19,22 +19,23 @@ This project demonstrates how to build, secure, observe, and scale a stateful AI
 ## **🏗 Architecture**
 
 ```mermaid
-graph TD  
-    User[User / Browser] -->|HTTPS| FE[Frontend (Cloud Run)]  
-    User -->|HTTPS| GLB[Global Load Balancer]  
-    GLB -->|Cloud Armor| Ingress  
-    Ingress --> Service[Parlant Service]  
-      
-    subgraph "GKE Autopilot Cluster"  
-        Service --> Pod1[Parlant Pod]  
-        Service --> Pod2[Parlant Pod]  
-          
-        Pod1 -->|Async Events| OTEL[OTEL Collector]  
-        Pod1 -->|Inference| Vertex[Vertex AI / Mock LLM]  
-    end  
-      
-    subgraph "Persistence"  
-        Pod1 -->|Peering/NAT| Mongo[MongoDB Atlas]  
+flowchart TD
+    User["User / Browser"] -->|HTTPS| FE["Frontend (Cloud Run)"]
+    User -->|HTTPS| GLB["Global Load Balancer"]
+    
+    subgraph Cluster ["GKE Autopilot Cluster"]
+        GLB -->|Cloud Armor| Ingress["Ingress"]
+        Ingress --> Service["Parlant Service"]
+    
+        Service --> Pod1["Parlant Pod"]
+        Service --> Pod2["Parlant Pod"]
+        
+        Pod1 -->|Async Events| OTEL["OTEL Collector"]
+        Pod1 -->|Inference| Vertex["Vertex AI / Mock LLM"]
+    end
+    
+    subgraph Data ["Persistence"]
+        Pod1 -->|Peering/NAT| Mongo["MongoDB Atlas"]
     end
 ```
 
