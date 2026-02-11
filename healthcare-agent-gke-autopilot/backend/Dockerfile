@@ -21,6 +21,16 @@ COPY *.py .
 # Expose Parlant's default port
 EXPOSE 8800
 
+# Create a non-root user
+RUN useradd -m -u 1000 parlant && \
+    chown -R parlant:parlant /app
+
+# Switch to non-root user
+USER parlant
+
+# Set PARLANT_HOME to a writable location
+ENV PARLANT_HOME=/tmp/parlant-data
+
 # Health check endpoint
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import requests; requests.get('http://localhost:8800/health')" || exit 1
