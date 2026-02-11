@@ -314,7 +314,7 @@ async def main() -> None:
             nlp_service=NLP_SERVICE,
             configure_container=configure_container,
             configure_api=configure_api,
-            migrate=True,
+            # migrate=True,
             **mongodb_config
         ) as server:
             print("DEBUG: Server context entered")
