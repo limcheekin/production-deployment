@@ -154,15 +154,20 @@ export function useParlantSession() {
 
                                 // Check for completion
                                 const chunks = updatedEvent.data?.chunks as any[];
-                                if (chunks && chunks.length > 0 && chunks[chunks.length - 1] === null) {
+                                const isChunkComplete = chunks && chunks.length > 0 && chunks[chunks.length - 1] === null;
+                                const isMessageComplete = !chunks && updatedEvent.data?.message;
+                                if (isChunkComplete || isMessageComplete) {
                                     // Unsubscribe
                                     unsub();
                                     subscriptionsRef.current.delete(eventId);
                                     setAgentStatus("ready");
                                 }
                             },
-                            (err) => {
-                                console.error(`Error streaming message ${eventId}`, err);
+                            () => {
+                                // SSE connection closed by server (normal for completed messages)
+                                // Clean up to prevent auto-reconnect loop
+                                unsub();
+                                subscriptionsRef.current.delete(eventId);
                             }
                         );
                         subscriptionsRef.current.set(eventId, unsub);
