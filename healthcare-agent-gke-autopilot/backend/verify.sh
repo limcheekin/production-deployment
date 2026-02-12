@@ -378,6 +378,34 @@ else
         # Check image
         DEPLOYED_IMAGE=$(kubectl get deployment parlant -n $NAMESPACE -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null)
         check_info "Deployed image: $DEPLOYED_IMAGE"
+
+        # Check terminationGracePeriodSeconds
+        TERM_GRACE=$(kubectl get deployment parlant -n $NAMESPACE -o jsonpath='{.spec.template.spec.terminationGracePeriodSeconds}' 2>/dev/null)
+        if [[ "$TERM_GRACE" == "120" ]]; then
+            check_pass "terminationGracePeriodSeconds: 120"
+        elif [[ -n "$TERM_GRACE" ]]; then
+            check_warn "terminationGracePeriodSeconds is $TERM_GRACE (expected: 120)"
+        else
+            check_warn "terminationGracePeriodSeconds not set (defaulting to 30)"
+        fi
+
+        # Check preStop lifecycle hook
+        PRESTOP_CMD=$(kubectl get deployment parlant -n $NAMESPACE -o jsonpath='{.spec.template.spec.containers[0].lifecycle.preStop.exec.command}' 2>/dev/null)
+        if [[ -n "$PRESTOP_CMD" ]]; then
+            check_pass "preStop lifecycle hook configured"
+        else
+            check_warn "preStop lifecycle hook not configured (risk of interrupted requests during shutdown)"
+        fi
+
+        # Check startupProbe failureThreshold
+        STARTUP_FT=$(kubectl get deployment parlant -n $NAMESPACE -o jsonpath='{.spec.template.spec.containers[0].startupProbe.failureThreshold}' 2>/dev/null)
+        if [[ "$STARTUP_FT" == "60" ]]; then
+            check_pass "startupProbe failureThreshold: 60 (600s budget)"
+        elif [[ -n "$STARTUP_FT" ]]; then
+            check_warn "startupProbe failureThreshold is $STARTUP_FT (expected: 60)"
+        else
+            check_warn "startupProbe not configured"
+        fi
     else
         check_fail "Deployment 'parlant' does NOT exist"
     fi

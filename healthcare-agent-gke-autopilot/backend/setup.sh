@@ -412,12 +412,17 @@ spec:
         app: parlant
     spec:
       serviceAccountName: $KSA_NAME
+      terminationGracePeriodSeconds: 120
       securityContext:
         runAsNonRoot: true
         runAsUser: 999
       containers:
       - name: parlant
         image: $IMAGE_PATH
+        lifecycle:
+          preStop:
+            exec:
+              command: ["sleep", "5"]
         ports:
         - containerPort: 8800
         env:

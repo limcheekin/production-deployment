@@ -164,6 +164,7 @@ revert_to_production() {
       replicas: 2
       template:
         spec:
+          terminationGracePeriodSeconds: 120
           containers:
           - name: parlant
             resources:
@@ -173,6 +174,10 @@ revert_to_production() {
               limits:
                 cpu: "1000m"
                 memory: "2Gi"
+            lifecycle:
+              preStop:
+                exec:
+                  command: ["sleep", "5"]
             livenessProbe:
               httpGet:
                 path: /healthz
@@ -186,16 +191,11 @@ revert_to_production() {
                 path: /healthz
                 port: 8800
               initialDelaySeconds: 10
-              periodSeconds: 10
-              timeoutSeconds: 5
-              failureThreshold: 3
-            # startupProbe is not present in setup.sh, so we leave it or remove it?
-            # Providing a null startupProbe to remove it if it was added.
             startupProbe:
               httpGet:
                 path: /healthz
                 port: 8800
-              failureThreshold: 30
+              failureThreshold: 60
               periodSeconds: 10
     '
     
