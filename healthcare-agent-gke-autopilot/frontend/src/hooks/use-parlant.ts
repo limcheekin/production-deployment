@@ -115,7 +115,7 @@ export function useParlantSession() {
 
                             if (matchIndex !== -1 && existingIndex === -1) {
                                 const newMessages = [...prev];
-                                newMessages[matchIndex] = { ...newMessages[matchIndex], id: `server-${eventId}`, status: 'sent' };
+                                newMessages[matchIndex] = { ...newMessages[matchIndex]!, id: `server-${eventId}`, status: 'sent' };
                                 return newMessages;
                             }
                         }
@@ -124,7 +124,7 @@ export function useParlantSession() {
                             // Update existing message (e.g. status change or content update?)
                             // Usually main stream only sends initial, but let's be safe
                             const newMessages = [...prev];
-                            newMessages[existingIndex] = { ...newMessages[existingIndex], content }; // Update content just in case
+                            newMessages[existingIndex] = { ...newMessages[existingIndex]!, content }; // Update content just in case
                             return newMessages;
                         } else {
                             // New Message
@@ -156,7 +156,7 @@ export function useParlantSession() {
                                 });
 
                                 // Check for completion
-                                const chunks = updatedEvent.data?.chunks as any[];
+                                const chunks = updatedEvent.data?.chunks as unknown[];
                                 const isChunkComplete = chunks && chunks.length > 0 && chunks[chunks.length - 1] === null;
                                 const isMessageComplete = !chunks && updatedEvent.data?.message;
                                 if (isChunkComplete || isMessageComplete) {

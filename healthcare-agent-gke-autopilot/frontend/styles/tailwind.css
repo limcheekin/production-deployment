@@ -1,12 +1,44 @@
 @import 'tailwindcss';
+@import url('https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700&family=Noto+Sans:wght@300;400;500;700&display=swap');
+
+/*
+  Healthcare Agent Design System
+  Style: Accessible & Ethical | WCAG AAA
+  Palette: Medical Teal + Health Green
+  Typography: Figtree (headings) / Noto Sans (body)
+*/
+
+@theme {
+  --color-primary: #0891B2;
+  --color-primary-dark: #0E7490;
+  --color-primary-light: #67E8F9;
+  --color-secondary: #22D3EE;
+  --color-accent: #22C55E;
+  --color-accent-dark: #16A34A;
+
+  --color-healthcare-bg: #F0FDFA;
+  --color-healthcare-surface: #FFFFFF;
+  --color-healthcare-surface-alt: #F0F9FF;
+  --color-healthcare-border: #B2F5EA;
+  --color-healthcare-border-subtle: #E2E8F0;
+
+  --color-healthcare-text: #134E4A;
+  --color-healthcare-text-muted: #475569;
+  --color-healthcare-text-inverse: #FFFFFF;
+
+  --color-healthcare-error: #EF4444;
+  --color-healthcare-error-bg: #FEF2F2;
+  --color-healthcare-warning: #F59E0B;
+  --color-healthcare-success: #22C55E;
+
+  --font-heading: 'Figtree', system-ui, sans-serif;
+  --font-body: 'Noto Sans', system-ui, sans-serif;
+}
 
 /*
   The default border color has changed to `currentColor` in Tailwind CSS v4,
   so we've added these compatibility styles to make sure everything still
   looks the same as it did with Tailwind CSS v3.
-
-  If we ever want to remove these styles, we need to add an explicit border
-  color utility to any element that depends on these defaults.
 */
 @layer base {
   *,
@@ -14,6 +46,152 @@
   ::before,
   ::backdrop,
   ::file-selector-button {
-    border-color: var(--color-gray-200, currentColor);
+    border-color: var(--color-healthcare-border-subtle, currentColor);
   }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    font-family: var(--font-body);
+    color: var(--color-healthcare-text);
+    background-color: var(--color-healthcare-bg);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-size: 16px;
+    line-height: 1.6;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+}
+
+/* Chat-specific animations */
+@layer utilities {
+  @keyframes fade-in-up {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes bounce-dot {
+    0%, 80%, 100% {
+      transform: scale(0.6);
+      opacity: 0.4;
+    }
+    40% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  @keyframes pulse-ring {
+    0% {
+      transform: scale(1);
+      opacity: 1;
+    }
+    100% {
+      transform: scale(1.8);
+      opacity: 0;
+    }
+  }
+
+  .animate-fade-in-up {
+    animation: fade-in-up 0.3s ease-out both;
+  }
+
+  .animate-bounce-dot {
+    animation: bounce-dot 1.4s infinite ease-in-out both;
+  }
+
+  .animate-pulse-ring {
+    animation: pulse-ring 1.5s infinite;
+  }
+}
+
+/* Respect user preference for reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Markdown content styling for assistant messages */
+.markdown-content {
+  font-size: 0.9375rem;
+  line-height: 1.7;
+}
+
+.markdown-content p {
+  margin-bottom: 0.5em;
+}
+
+.markdown-content p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  padding-left: 1.25em;
+  margin-bottom: 0.5em;
+}
+
+.markdown-content li {
+  margin-bottom: 0.25em;
+}
+
+.markdown-content code {
+  background-color: var(--color-healthcare-surface-alt);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  font-size: 0.875em;
+}
+
+.markdown-content pre {
+  background-color: #1E293B;
+  color: #E2E8F0;
+  padding: 1em;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin-bottom: 0.75em;
+}
+
+.markdown-content pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.85em;
+}
+
+.markdown-content a {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.markdown-content a:hover {
+  color: var(--color-primary-dark);
+}
+
+.markdown-content strong {
+  font-weight: 600;
+  color: var(--color-healthcare-text);
+}
+
+.markdown-content blockquote {
+  border-left: 3px solid var(--color-primary);
+  padding-left: 1em;
+  margin-left: 0;
+  color: var(--color-healthcare-text-muted);
+  font-style: italic;
 }
