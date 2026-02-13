@@ -42,16 +42,37 @@ flowchart TD
 ## **📂 Directory Structure**
 
 ```
-healthcare-agent-gke-autopilot/  
-├── backend/  
-│   ├── auth.py                  # Custom Auth Policy  
-│   ├── main.py                  # FastAPI Entrypoint  
-│   ├── setup.sh                 # Infrastructure Provisioning (GKE, VPC, NAT)  
-│   ├── load_testing/            # Simulated Scale Framework  
-│   └── docs/                    # Architectural decisions & guides  
-└── frontend/  
-    ├── src/                     # Next.js App Router Source  
-    └── Dockerfile               # Optimized Standalone Build
+healthcare-agent-gke-autopilot/
+├── backend/
+│   ├── main.py                    # Parlant agent: tools, journeys, glossary, CORS & auth config
+│   ├── auth.py                    # JWT authorization policy with rate limiting (1000 req/min)
+│   ├── production_config.py       # MongoDB, NLP service selection, JSON structured logging
+│   ├── requirements.txt           # Python dependencies (parlant, pyjwt, pymongo, etc.)
+│   ├── .env.example               # Template for Kubernetes Secrets (.env)
+│   ├── Dockerfile                 # Local development image
+│   ├── Dockerfile-GKE-Autopilot   # Multi-stage production image with CA certs
+│   ├── setup.sh                   # Full infrastructure provisioning (see Step 3)
+│   ├── clean-up.sh                # Teardown of all provisioned resources
+│   ├── verify.sh                  # Post-deployment verification checks
+│   ├── show_nat_ip.sh             # Retrieve outbound NAT IP for MongoDB allowlisting
+│   ├── setup-github-wif.sh        # Workload Identity Federation setup for GitHub Actions
+│   ├── clean-up-github-wif.sh     # WIF teardown
+│   ├── load_testing/              # Simulated Scale Framework
+│   │   ├── mock_llm_server.py     #   Mock LLM (FastAPI) for cost-free load testing
+│   │   ├── locust_load_test.py    #   Locust test definitions
+│   │   ├── docker-compose.yaml    #   Local stack (Agent + Mock LLM + MongoDB)
+│   │   ├── run-scale-test.sh      #   Test runner (local / baseline / kneepoint)
+│   │   ├── redeploy-for-load-testing.sh  # Switch GKE between prod & test mode
+│   │   ├── hpa.yaml               #   HPA manifest for load testing
+│   │   └── monitoring-queries.md  #   MQL queries for NAT & Pod metrics
+│   └── docs/                      # Architectural decisions & guides
+│       ├── otel-prometheus/        #   OTEL + Managed Prometheus setup
+│       ├── scaling/                #   Scaling strategy & guide
+│       ├── simulated-scale/        #   Simulated scale design & walkthroughs
+│       └── streaming-unsupported/  #   SSE streaming diagnosis
+└── frontend/
+    ├── src/                       # Next.js 15 App Router Source
+    └── Dockerfile                 # Optimized Standalone Build
 ```
 
 ## **🚀 Quick Start (Local Development)**
@@ -93,33 +114,46 @@ Open [**http://localhost:3000**](https://www.google.com/search?q=http://localhos
 
 ### **Step 1: Backend Configuration**
 
-Create a .env file in backend/ based on the example. This will be converted into a Kubernetes Secret.
+Create a `.env` file in `backend/` based on the example. This will be converted into a Kubernetes Secret via `kubectl create secret generic --from-env-file`.
 
 ```bash
-cd backend  
-cp .env.example .env  
-# Edit .env with your MongoDB URIs and JWT Secret
+cd backend
+cp .env.example .env
+# Edit .env with your values. Keys must be lowercase-hyphenated:
+#   mongodb-sessions-uri=mongodb+srv://...
+#   mongodb-customers-uri=mongodb+srv://...
+#   jwt-secret-key=your-jwt-secret-key
+```
+
+> [!NOTE]
+> The `.env` keys use lowercase-hyphenated format (e.g. `mongodb-sessions-uri`) because they become Kubernetes Secret keys. The deployment manifest maps them to uppercase env vars (e.g. `MONGODB_SESSIONS_URI`) inside the pod.
 
 ### **Step 2: Build & Push Backend Image**
 
 The GKE setup script expects the image in the Artifact Registry.
 
-# 1. Enable API & Configure Docker  
-gcloud services enable artifactregistry.googleapis.com  
+```bash
+# 1. Enable API & Configure Docker
+gcloud services enable artifactregistry.googleapis.com
 gcloud auth configure-docker us-central1-docker.pkg.dev
 
-# 2. Create Repository  
+# 2. Create Repository
 gcloud artifacts repositories create parlant-repo --repository-format=docker --location=us-central1 --description="Parlant Docker Repo"
 
-# 3. Build & Push  
-export PROJECT_ID=$(gcloud config get-value project)  
-docker build -t us-central1-docker.pkg.dev/$PROJECT_ID/parlant-repo/parlant-agent:latest -f Dockerfile-GKE-Autopilot .  
+# 3. Build & Push
+export PROJECT_ID=$(gcloud config get-value project)
+docker build -t us-central1-docker.pkg.dev/$PROJECT_ID/parlant-repo/parlant-agent:latest -f Dockerfile-GKE-Autopilot .
 docker push us-central1-docker.pkg.dev/$PROJECT_ID/parlant-repo/parlant-agent:latest
 ```
 
 ### **Step 3: Infrastructure Setup**
 
-Run the automated setup script. This provisions VPC, Cloud NAT, Router, GKE Cluster, IAM, and Ingress.
+Run the automated setup script. This provisions:
+- **Networking**: VPC, Subnet, Cloud Router, Cloud NAT (tuned for high concurrency)
+- **Compute**: GKE Autopilot Cluster with HttpLoadBalancing
+- **Security**: Cloud Armor WAF (XSS protection + rate limiting), Workload Identity (app + OTEL service accounts)
+- **Observability**: OpenTelemetry Collector (Deployment + Service + ConfigMap) exporting to Cloud Trace and Managed Prometheus
+- **Application**: Kubernetes Secrets (from `.env`), Parlant Deployment (with startupProbe for Vertex AI init), Service, BackendConfig, Ingress with Global Static IP
 
 ```bash
 ./setup.sh
@@ -182,11 +216,17 @@ To enable GitHub Actions to deploy to GKE without storing static JSON keys:
 1. **Setup WIF**:
 
 ```bash
-   cd backend  
-   ./setup-github-wif.sh <GITHUB_ORG>/<REPO_NAME>
-```   
+cd backend
+./setup-github-wif.sh <GITHUB_ORG>/<REPO_NAME>
+```
 
-2. **Configure GitHub Secrets**: The script will output the values (GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT) to add to your repository secrets.
+2. **Configure GitHub Secrets**: The script will output the values (`GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_SERVICE_ACCOUNT`) to add to your repository secrets.
+
+3. **Teardown WIF** (when no longer needed):
+
+```bash
+./clean-up-github-wif.sh
+```
 
 ## **🧪 Simulated Scale Testing**
 
@@ -229,7 +269,7 @@ cd backend
 * **Metrics**: **Managed Prometheus**. Monitor parlant custom metrics.  
 * **Logs**: **Cloud Logging**. Structured JSON logs.
 
-**Dashboarding**: Use the MQL queries in [backend/load_testing/monitoring-queries.md](https://www.google.com/search?q=backend/load_testing/monitoring-queries.md) to monitor Cloud NAT Port Usage and Pod Memory.
+**Dashboarding**: Use the MQL queries in [monitoring-queries.md](backend/load_testing/monitoring-queries.md) to monitor Cloud NAT Port Usage and Pod Memory.
 
 ## **🧹 Teardown & Cleanup**
 
