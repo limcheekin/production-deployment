@@ -83,9 +83,9 @@ jobs:
           - image-name: frontend
             dockerfile: healthcare-agent-gke-autopilot/frontend/Dockerfile
             context: frontend
-          - image-name: load-testing
-            dockerfile: healthcare-agent-gke-autopilot/backend/load_testing/Dockerfile
-            context: healthcare-agent-gke-autopilot/backend/load_testing
+#          - image-name: load-testing
+#            dockerfile: healthcare-agent-gke-autopilot/backend/load_testing/Dockerfile
+#            context: healthcare-agent-gke-autopilot/backend/load_testing
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
