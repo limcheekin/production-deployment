@@ -36,6 +36,7 @@ ENV NEXT_PUBLIC_AGENT_ID=$NEXT_PUBLIC_AGENT_ID
 
 # If using npm comment out above and use below instead
 RUN npm run build
+RUN mkdir -p /app/public
 
 # Production image, copy all the files and run next
 FROM base AS runner
