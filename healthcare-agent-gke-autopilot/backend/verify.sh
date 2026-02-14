@@ -170,6 +170,14 @@ if gcloud container clusters describe $CLUSTER_NAME --region=$REGION &>/dev/null
     else
         check_warn "Cluster is NOT in Autopilot mode"
     fi
+
+    # Verify Private Nodes
+    PRIVATE_NODES=$(gcloud container clusters describe $CLUSTER_NAME --region=$REGION --format='value(privateClusterConfig.enablePrivateNodes)' 2>/dev/null)
+    if [[ "$PRIVATE_NODES" == "True" ]]; then
+        check_pass "Private Nodes Enabled"
+    else
+        check_warn "Private Nodes NOT Enabled (Outbound traffic may bypass Cloud NAT)"
+    fi
     
     # Get cluster credentials for kubectl commands
     echo "    - Fetching cluster credentials..."

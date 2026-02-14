@@ -103,6 +103,7 @@ else
         --region=$REGION \
         --network=$NETWORK_NAME \
         --subnetwork=$SUBNET_NAME \
+        --enable-private-nodes \
         --quiet
 fi
 
