@@ -2,7 +2,9 @@
 FROM python:3.11-slim AS builder
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --user --no-cache-dir -r requirements.txt
+RUN pip install --user --no-cache-dir -r requirements.txt && \
+    pip install --user --no-cache-dir "fastmcp>=2.14.0" "jaraco.context>=6.1.0" "wheel>=0.46.2" && \
+    find /root/.local -name "node_modules" -type d -exec rm -rf {} +
 
 FROM python:3.11-slim
 WORKDIR /app
