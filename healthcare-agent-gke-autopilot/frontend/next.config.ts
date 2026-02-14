@@ -4,6 +4,7 @@ import { type NextConfig } from "next"
 import { env } from "./src/env.mjs"
 
 const config: NextConfig = {
+  output: "standalone",
   reactStrictMode: true,
   logging: {
     fetches: {

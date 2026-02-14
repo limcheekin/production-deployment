@@ -22,6 +22,13 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# Build-time env vars required by @t3-oss/env-nextjs Zod validation.
+# Override at build time: docker build --build-arg NEXT_PUBLIC_PARLANT_API_URL=https://api.example.com ...
+ARG NEXT_PUBLIC_PARLANT_API_URL=http://localhost:8800
+ARG NEXT_PUBLIC_AGENT_ID=default-agent
+ENV NEXT_PUBLIC_PARLANT_API_URL=$NEXT_PUBLIC_PARLANT_API_URL
+ENV NEXT_PUBLIC_AGENT_ID=$NEXT_PUBLIC_AGENT_ID
+
 # Next.js collects completely anonymous telemetry data about general usage.
 # Learn more here: https://nextjs.org/telemetry
 # Uncomment the following line in case you want to disable telemetry during the build.

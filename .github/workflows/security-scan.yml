@@ -1,0 +1,234 @@
+name: Security Scan (Trivy)
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly scan on Monday 06:00 UTC — catches newly disclosed CVEs
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read # required by codeql-action/upload-sarif for private repos
+
+jobs:
+  # ============================================================================
+  # Job 1: Filesystem Dependency Vulnerability Scan
+  # Scans requirements.txt (Python) and package-lock.json (Node.js)
+  # ============================================================================
+  vulnerability-scan:
+    name: Dependency Vulnerabilities
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner (SARIF)
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          scanners: 'vuln'
+          format: 'sarif'
+          output: 'trivy-vuln-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          hide-progress: true
+          limit-severities-for-sarif: true
+
+      - name: Upload vulnerability scan to GitHub Security
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: 'trivy-vuln-results.sarif'
+          category: 'trivy-vulnerability-scan'
+
+      - name: Run Trivy vulnerability scanner (table summary)
+        uses: aquasecurity/trivy-action@0.33.1
+        if: always()
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          scanners: 'vuln'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          hide-progress: true
+          exit-code: '1'
+
+  # ============================================================================
+  # Job 2: Docker Image Vulnerability Scan
+  # Builds and scans all 4 Dockerfiles via matrix strategy
+  # ============================================================================
+  docker-image-scan:
+    name: Image Scan (${{ matrix.image-name }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image-name: backend
+            dockerfile: backend/Dockerfile
+            context: backend
+          - image-name: backend-gke
+            dockerfile: backend/Dockerfile-GKE-Autopilot
+            context: backend
+          - image-name: frontend
+            dockerfile: frontend/Dockerfile
+            context: frontend
+          - image-name: load-testing
+            dockerfile: backend/load_testing/Dockerfile
+            context: backend/load_testing
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t ${{ matrix.image-name }}:${{ github.sha }} \
+            -f ${{ matrix.dockerfile }} \
+            ${{ matrix.context }}
+
+      - name: Run Trivy image scanner (SARIF)
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: '${{ matrix.image-name }}:${{ github.sha }}'
+          scan-type: 'image'
+          scanners: 'vuln'
+          format: 'sarif'
+          output: 'trivy-image-${{ matrix.image-name }}.sarif'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          hide-progress: true
+          timeout: '10m0s'
+          limit-severities-for-sarif: true
+
+      - name: Upload image scan to GitHub Security
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: 'trivy-image-${{ matrix.image-name }}.sarif'
+          category: 'trivy-image-${{ matrix.image-name }}'
+
+      - name: Run Trivy image scanner (table summary)
+        uses: aquasecurity/trivy-action@0.33.1
+        if: always()
+        with:
+          image-ref: '${{ matrix.image-name }}:${{ github.sha }}'
+          scan-type: 'image'
+          scanners: 'vuln'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          hide-progress: true
+          exit-code: '1'
+
+  # ============================================================================
+  # Job 3: Infrastructure as Code Misconfiguration Scan
+  # Scans Dockerfiles, K8s YAMLs, docker-compose for misconfigurations
+  # ============================================================================
+  iac-misconfiguration-scan:
+    name: IaC Misconfigurations
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy IaC scanner (SARIF)
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          scanners: 'misconfig'
+          format: 'sarif'
+          output: 'trivy-iac-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          hide-progress: true
+          limit-severities-for-sarif: true
+
+      - name: Upload IaC scan to GitHub Security
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: 'trivy-iac-results.sarif'
+          category: 'trivy-iac-scan'
+
+      - name: Run Trivy IaC scanner (table summary)
+        uses: aquasecurity/trivy-action@0.33.1
+        if: always()
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          scanners: 'misconfig'
+          format: 'table'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          hide-progress: true
+          exit-code: '1'
+
+  # ============================================================================
+  # Job 4: Secret Detection Scan
+  # Detects hardcoded API keys, passwords, tokens in source and config
+  # ============================================================================
+  secret-scan:
+    name: Secret Detection
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy secret scanner (SARIF)
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          scanners: 'secret'
+          format: 'sarif'
+          output: 'trivy-secret-results.sarif'
+          hide-progress: true
+
+      - name: Upload secret scan to GitHub Security
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: 'trivy-secret-results.sarif'
+          category: 'trivy-secret-scan'
+
+      - name: Run Trivy secret scanner (table summary)
+        uses: aquasecurity/trivy-action@0.33.1
+        if: always()
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          scanners: 'secret'
+          format: 'table'
+          hide-progress: true
+          exit-code: '1'
+
+  # ============================================================================
+  # Job 5: License Compliance Scan (informational, non-blocking)
+  # Detects copyleft or restricted licenses in dependencies
+  # ============================================================================
+  license-scan:
+    name: License Compliance
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy license scanner
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          scanners: 'license'
+          format: 'table'
+          hide-progress: true
+          exit-code: '0'
