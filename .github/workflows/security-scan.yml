@@ -75,17 +75,17 @@ jobs:
       matrix:
         include:
           - image-name: backend
-            dockerfile: backend/Dockerfile
+            dockerfile: healthcare-agent-gke-autopilot/backend/Dockerfile
             context: backend
           - image-name: backend-gke
-            dockerfile: backend/Dockerfile-GKE-Autopilot
+            dockerfile: healthcare-agent-gke-autopilot/backend/Dockerfile-GKE-Autopilot
             context: backend
           - image-name: frontend
-            dockerfile: frontend/Dockerfile
+            dockerfile: healthcare-agent-gke-autopilot/frontend/Dockerfile
             context: frontend
           - image-name: load-testing
-            dockerfile: backend/load_testing/Dockerfile
-            context: backend/load_testing
+            dockerfile: healthcare-agent-gke-autopilot/backend/load_testing/Dockerfile
+            context: healthcare-agent-gke-autopilot/backend/load_testing
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
