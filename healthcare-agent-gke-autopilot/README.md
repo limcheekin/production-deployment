@@ -43,6 +43,9 @@ flowchart TD
 
 ```
 healthcare-agent-gke-autopilot/
+├── ../.github/workflows/      # CI/CD Workflows
+│   ├── deploy.yml             # Production Deployment to GKE
+│   └── security-scan.yml      # Trivy Security Scans (IaC, Secrets, Vulns)
 ├── backend/
 │   ├── main.py                    # Parlant agent: tools, journeys, glossary, CORS & auth config
 │   ├── auth.py                    # JWT authorization policy with rate limiting (1000 req/min)
@@ -209,7 +212,19 @@ gcloud run deploy healthcare-frontend
 
 *Click the resulting Cloud Run URL to access your production agent.*
 
-## **🔐 CI/CD: Workload Identity Federation**
+
+## **🔐 CI/CD & Security**
+
+### **Github Actions Workflows**
+
+Automated pipelines are defined in `.github/workflows/`:
+
+| Workflow | Description | Triggers |
+| :--- | :--- | :--- |
+| **Deploy to Production** | Builds container images, pushes to Artifact Registry, and deploys to GKE Autopilot (Zero-Key Auth via WIF). | Push to `main` |
+| **Security Scan (Trivy)** | Comprehensive security scanning: Dependency Vulns, Image Vulns, IaC Misconfigs, Secret Detection, License Compliance. | Push/PR to `main`, Weekly Schedule |
+
+### **Workload Identity Federation**
 
 To enable GitHub Actions to deploy to GKE without storing static JSON keys:
 
