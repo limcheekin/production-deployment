@@ -1,5 +1,10 @@
 # Dockerfile - Optimized for GKE Autopilot
 FROM python:3.11-slim AS builder
+
+# 1. Update the pip tools immediately to overwrite pre-installed versions
+# This fixes the vulnerability in the global environment
+RUN pip install --no-cache-dir --upgrade "wheel>=0.46.2" "jaraco.context>=6.1.0" setuptools
+
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --user --no-cache-dir -r requirements.txt && \
@@ -7,10 +12,12 @@ RUN pip install --user --no-cache-dir -r requirements.txt && \
     find /root/.local -name "node_modules" -type d -exec rm -rf {} +
 
 FROM python:3.11-slim
-WORKDIR /app
 
-# Upgrade system packages to fix vulnerabilities
-RUN pip install --no-cache-dir --upgrade "wheel>=0.46.2"
+# 1. Update the pip tools immediately to overwrite pre-installed versions
+# This fixes the vulnerability in the global environment
+RUN pip install --no-cache-dir --upgrade "wheel>=0.46.2" "jaraco.context>=6.1.0" setuptools
+
+WORKDIR /app
 
 # Install CA certificates for SSL/TLS connections (required for MongoDB Atlas)
 RUN apt-get update && \
