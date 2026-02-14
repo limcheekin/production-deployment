@@ -42,11 +42,11 @@
     "@radix-ui/react-toggle-group": "^1.1.2",
     "@radix-ui/react-tooltip": "^1.1.8",
     "@semantic-release/changelog": "^6.0.3",
-    "@semantic-release/commit-analyzer": "12.0.0",
+    "@semantic-release/commit-analyzer": "^13.0.1",
     "@semantic-release/git": "^10.0.1",
-    "@semantic-release/github": "^10.3.5",
-    "@semantic-release/npm": "^12.0.1",
-    "@semantic-release/release-notes-generator": "^13.0.0",
+    "@semantic-release/github": "^12.0.6",
+    "@semantic-release/npm": "^13.1.4",
+    "@semantic-release/release-notes-generator": "^14.1.0",
     "@t3-oss/env-nextjs": "^0.10.1",
     "@vercel/otel": "^1.12.0",
     "class-variance-authority": "^0.7.0",
@@ -60,10 +60,6 @@
     "rehype-sanitize": "^6.0.0",
     "tailwind-merge": "^2.6.1",
     "zod": "^3.24.4"
-  },
-  "overrides": {
-    "glob": "^10.4.5",
-    "tar": "^7.5.7"
   },
   "devDependencies": {
     "@babel/core": "^7.27.1",
@@ -115,7 +111,7 @@
     "postinstall-postinstall": "^2.1.0",
     "prettier": "3.0.3",
     "prettier-plugin-tailwindcss": "^0.6.11",
-    "semantic-release": "^22.0.12",
+    "semantic-release": "^25.0.3",
     "storybook": "^8.6.12",
     "tailwindcss": "^4.1.5",
     "tsc": "^2.0.4",
@@ -128,6 +124,5 @@
   },
   "engines": {
     "node": ">=20.0.0"
-  },
-  "packageManager": "pnpm@10.0.0"
+  }
 }
