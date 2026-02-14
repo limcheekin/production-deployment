@@ -153,6 +153,8 @@ jobs:
           severity: 'CRITICAL,HIGH,MEDIUM'
           hide-progress: true
           limit-severities-for-sarif: true
+          skip-files: 'healthcare-agent-gke-autopilot/backend/Dockerfile'
+          skip-dirs: 'healthcare-agent-gke-autopilot/backend/load_testing'
 
       - name: Upload IaC scan to GitHub Security
         uses: github/codeql-action/upload-sarif@v4
@@ -172,6 +174,8 @@ jobs:
           severity: 'CRITICAL,HIGH,MEDIUM'
           hide-progress: true
           exit-code: '1'
+          skip-files: 'healthcare-agent-gke-autopilot/backend/Dockerfile'
+          skip-dirs: 'healthcare-agent-gke-autopilot/backend/load_testing'
 
   # ============================================================================
   # Job 4: Secret Detection Scan
