@@ -6,3 +6,6 @@ pyjwt>=2.8.0
 limits>=3.0.0
 pymongo[srv]>=4.0.0 # use pymongo for self-hosted mongodb
 redis>=5.0.0
+wheel>=0.46.2
+setuptools>=82.0.0
+jaraco.context>=6.1.0

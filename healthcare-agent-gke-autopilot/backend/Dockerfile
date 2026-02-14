@@ -1,6 +1,10 @@
 # Use Python 3.11 slim image
 FROM python:3.11-slim
 
+# 1. Update the pip tools immediately to overwrite pre-installed versions
+# This fixes the vulnerability in the global environment
+RUN pip install --no-cache-dir --upgrade "wheel>=0.46.2" "jaraco.context>=6.1.0" setuptools
+
 # Set working directory
 WORKDIR /app
 
