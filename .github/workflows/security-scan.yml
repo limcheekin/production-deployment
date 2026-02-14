@@ -76,13 +76,13 @@ jobs:
         include:
           - image-name: backend
             dockerfile: healthcare-agent-gke-autopilot/backend/Dockerfile
-            context: backend
+            context: healthcare-agent-gke-autopilot/backend
           - image-name: backend-gke
             dockerfile: healthcare-agent-gke-autopilot/backend/Dockerfile-GKE-Autopilot
-            context: backend
+            context: healthcare-agent-gke-autopilot/backend
           - image-name: frontend
             dockerfile: healthcare-agent-gke-autopilot/frontend/Dockerfile
-            context: frontend
+            context: healthcare-agent-gke-autopilot/frontend
 #          - image-name: load-testing
 #            dockerfile: healthcare-agent-gke-autopilot/backend/load_testing/Dockerfile
 #            context: healthcare-agent-gke-autopilot/backend/load_testing
