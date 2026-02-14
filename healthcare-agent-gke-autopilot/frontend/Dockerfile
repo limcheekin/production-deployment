@@ -61,7 +61,10 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
 # Overwrite node_modules with clean production install to ensure no devDependencies (like esbuild) are present
 COPY --from=builder --chown=nextjs:nodejs /app/package.json /app/package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force && chown -R nextjs:nodejs /app/node_modules
+RUN npm ci --omit=dev && npm cache clean --force && \
+    npm uninstall -g npm && \
+    rm -f /usr/local/bin/npm /usr/local/bin/npx && \
+    chown -R nextjs:nodejs /app/node_modules
 
 USER nextjs
 
