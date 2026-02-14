@@ -415,7 +415,7 @@ spec:
       terminationGracePeriodSeconds: 120
       securityContext:
         runAsNonRoot: true
-        runAsUser: 999
+        runAsUser: 1000
       containers:
       - name: parlant
         image: $IMAGE_PATH

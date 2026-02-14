@@ -155,7 +155,7 @@ revert_to_production() {
     echo_info "Regenerating production deployment..."
     # Remove Load Testing Specific Env Vars (Revert to Vertex AI)
     echo_info "Removing mock LLM configuration..."
-    kubectl set env deployment/parlant VERTEX_AI_API_ENDPOINT-
+    kubectl set env deployment/parlant VERTEX_AI_API_ENDPOINT- PARLANT_ENTRYPOINT-
 
     # Patch Resources and Probes back to Production values
     echo_info "Restoring production resources and probes..."
@@ -319,7 +319,8 @@ reconfigure_parlant() {
         USE_VERTEX_AI="true" \
         VERTEX_AI_API_ENDPOINT="mock-llm.default.svc.cluster.local:8000" \
         VERTEX_AI_PROJECT_ID="$PROJECT_ID" \
-        VERTEX_AI_REGION="$REGION"
+        VERTEX_AI_REGION="$REGION" \
+        PARLANT_ENTRYPOINT="main_load_test.py"
 
     # 2. Patch Resources and Probes for Load Testing
     # Note: We use 'strategic' merge patch.

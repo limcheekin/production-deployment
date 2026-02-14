@@ -13,7 +13,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Security: Create non-root user with home directory
-RUN groupadd -r parlant && useradd -r -g parlant -m -d /home/parlant parlant
+RUN groupadd -r parlant && useradd -r -g parlant -u 1000 -m -d /home/parlant parlant
 
 # Copy Python packages from builder
 COPY --from=builder /root/.local /home/parlant/.local
@@ -32,4 +32,4 @@ ENV PATH=/home/parlant/.local/bin:$PATH
 USER parlant
 
 EXPOSE 8800
-CMD ["python", "main.py"]
+CMD ["sh", "-c", "python ${PARLANT_ENTRYPOINT:-main.py}"]

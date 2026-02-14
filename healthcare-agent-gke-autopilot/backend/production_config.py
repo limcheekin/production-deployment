@@ -32,7 +32,7 @@ if os.environ.get("USE_VERTEX_AI") == "true":
     # set the following environment variables
     # - VERTEX_AI_PROJECT_ID
     # - VERTEX_AI_REGION, default to "us-central1"
-    # - VERTEX_AI_MODEL, default to "claude-sonnet-3.5"
+    # - VERTEX_AI_MODEL, default to "gemini-2.5-flash"
     NLP_SERVICE = p.NLPServices.vertex
 else:
     # set GEMINI_API_KEY
@@ -40,7 +40,12 @@ else:
 
 def get_mongodb_config():
     """Returns MongoDB configuration for Parlant."""
+    # Enforce pool limits for M0 Free Tier (500 limit / 10 max pods = 50 per pod)
+    separator = "&" if "?" in MONGODB_SESSIONS_URI else "?"
+    sessions_uri = f"{MONGODB_SESSIONS_URI}{separator}maxPoolSize=50"
+    separator = "&" if "?" in MONGODB_CUSTOMERS_URI else "?"
+    customers_uri = f"{MONGODB_CUSTOMERS_URI}{separator}maxPoolSize=50"
     return {
-        "session_store": MONGODB_SESSIONS_URI,
-        "customer_store": MONGODB_CUSTOMERS_URI,
+        "session_store": sessions_uri,
+        "customer_store": customers_uri,
     }
