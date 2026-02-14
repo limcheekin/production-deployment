@@ -16,7 +16,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Force upgrade vulnerable packages and remove vulnerable binaries from parlant
-RUN pip install --no-cache-dir --upgrade "fastmcp>=2.14.0" "jaraco.context>=6.1.0" "wheel>=0.46.2" && \
+RUN pip install --no-cache-dir --upgrade "fastmcp>=2.14.0" "setuptools>=82.0.0" "wheel>=0.46.2" && \
     rm -rf /usr/local/lib/python3.11/site-packages/parlant/api/chat/node_modules
 
 # Copy application code
