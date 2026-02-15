@@ -33,6 +33,8 @@ elif [ -d "../.venv" ]; then
 fi
 
 # Configuration
+LOAD_TEST_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+LOCUST_FILE="${LOAD_TEST_DIR}/locust_load_test.py"
 PROJECT_ID=$(gcloud config get-value project)
 REGION="us-central1"
 INGRESS_IP=$(gcloud compute addresses describe parlant-global-ip --global --format='value(address)' 2>/dev/null || echo "")
@@ -92,7 +94,7 @@ run_baseline() {
     echo_info "  Spawn Rate: 1 user/sec"
     echo_info "=========================================="
     
-    locust -f load_testing/locust_load_test.py \
+    locust -f "$LOCUST_FILE" \
         --headless \
         -u "${LOCUST_USERS:-5}" \
         -r "${LOCUST_SPAWN_RATE:-1}" \
@@ -117,7 +119,7 @@ run_kneepoint() {
     for ccu in 10 20 30 40 50; do
         echo_info "Testing with $ccu concurrent users..."
         
-        locust -f load_testing/locust_load_test.py \
+        locust -f "$LOCUST_FILE" \
             --headless \
             -u $ccu \
             -r 2 \
@@ -143,7 +145,7 @@ run_soak() {
     
     mkdir -p results
     
-    locust -f load_testing/locust_load_test.py \
+    locust -f "$LOCUST_FILE" \
         --headless \
         -u 30 \
         -r 5 \
@@ -166,7 +168,7 @@ run_chaos() {
     mkdir -p results
     
     # Start load test in background
-    locust -f load_testing/locust_load_test.py \
+    locust -f "$LOCUST_FILE" \
         --headless \
         -u 30 \
         -r 5 \
@@ -207,7 +209,7 @@ run_local() {
     fi
     
     echo_info "Starting services with $DOCKER_COMPOSE..."
-    cd load_testing
+    cd "$LOAD_TEST_DIR"
     $DOCKER_COMPOSE up -d --build
     
     echo_info "Waiting for services to be ready..."
@@ -245,22 +247,22 @@ deploy_test_infra() {
     # Build and push mock LLM
     echo_info "Building mock LLM image..."
     docker build -t us-central1-docker.pkg.dev/$PROJECT_ID/parlant-repo/mock-llm:latest \
-        -f load_testing/Dockerfile load_testing/
+        -f "$LOAD_TEST_DIR/Dockerfile" "$LOAD_TEST_DIR/"
     docker push us-central1-docker.pkg.dev/$PROJECT_ID/parlant-repo/mock-llm:latest
     
     # Update deployment with correct project ID
-    sed "s/PROJECT_ID/$PROJECT_ID/g" load_testing/mock-llm-deployment.yaml | kubectl apply -f -
+    sed "s/PROJECT_ID/$PROJECT_ID/g" "$LOAD_TEST_DIR/mock-llm-deployment.yaml" | kubectl apply -f -
     
     # Deploy Locust ConfigMap
     kubectl create configmap locust-script \
-        --from-file=load_testing/locust_load_test.py \
+        --from-file="$LOCUST_FILE" \
         -o yaml --dry-run=client | kubectl apply -f -
     
     # Deploy Locust
-    kubectl apply -f load_testing/locust-deployment.yaml
+    kubectl apply -f "$LOAD_TEST_DIR/locust-deployment.yaml"
     
     # Apply HPA
-    kubectl apply -f load_testing/hpa.yaml
+    kubectl apply -f "$LOAD_TEST_DIR/hpa.yaml"
     
     echo_info "Test infrastructure deployed. Waiting for pods..."
     kubectl wait --for=condition=ready pod -l app=mock-llm --timeout=120s
