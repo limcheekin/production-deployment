@@ -240,36 +240,7 @@ run_local() {
     echo_info "To stop services: cd load_testing && $DOCKER_COMPOSE down"
 }
 
-# Deploy test infrastructure
-deploy_test_infra() {
-    echo_info "Deploying test infrastructure..."
-    
-    # Build and push mock LLM
-    echo_info "Building mock LLM image..."
-    docker build -t us-central1-docker.pkg.dev/$PROJECT_ID/parlant-repo/mock-llm:latest \
-        -f "$LOAD_TEST_DIR/Dockerfile" "$LOAD_TEST_DIR/"
-    docker push us-central1-docker.pkg.dev/$PROJECT_ID/parlant-repo/mock-llm:latest
-    
-    # Update deployment with correct project ID
-    sed "s/PROJECT_ID/$PROJECT_ID/g" "$LOAD_TEST_DIR/mock-llm-deployment.yaml" | kubectl apply -f -
-    
-    # Deploy Locust ConfigMap
-    kubectl create configmap locust-script \
-        --from-file="$LOCUST_FILE" \
-        -o yaml --dry-run=client | kubectl apply -f -
-    
-    # Deploy Locust
-    kubectl apply -f "$LOAD_TEST_DIR/locust-deployment.yaml"
-    
-    # Apply HPA
-    kubectl apply -f "$LOAD_TEST_DIR/hpa.yaml"
-    
-    echo_info "Test infrastructure deployed. Waiting for pods..."
-    kubectl wait --for=condition=ready pod -l app=mock-llm --timeout=120s
-    kubectl wait --for=condition=ready pod -l app=locust --timeout=120s
-    
-    echo_info "Infrastructure ready!"
-}
+
 
 # Main execution
 main() {
@@ -298,7 +269,9 @@ main() {
             run_local
             ;;
         deploy)
-            deploy_test_infra
+            echo_info "Delegating deployment to redeploy-for-load-testing.sh..."
+            # Execute the robust redeployment script
+            ./redeploy-for-load-testing.sh
             ;;
         all)
             echo_info "Running all phases..."
